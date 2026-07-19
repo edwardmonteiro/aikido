@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aikido"
+version = "0.1.0"
+description = "AI-native knowledge & decision operations for startup teams"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.9.0",
+    "rich>=13.0",
+    "jinja2>=3.1.0",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "python-dateutil>=2.8",
+    "gitpython>=3.1.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "black>=23.0", "mypy>=1.0"]
+
+[project.scripts]
+aikido = "aikido.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aikido"]
+
+# Markdown / JSON default data lives inside the package and must ship in the wheel.
+artifacts = [
+    "src/aikido/data/**/*.md",
+    "src/aikido/data/**/*.json",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
