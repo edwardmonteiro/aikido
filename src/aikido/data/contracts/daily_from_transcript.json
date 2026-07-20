@@ -1,0 +1,37 @@
+{
+  "job_id": "daily-from-transcript",
+  "version": "1.0.0",
+  "objective": {
+    "job": "Turn a meeting transcript into a shippable daily log",
+    "user": "Team member running the daily straight off a call",
+    "context": "Right after a meeting - capture what happened without letting the day drift into a deep thread that can't ship",
+    "success_feeling": "The day stays deliverable; deep threads are captured but parked, not derailing today"
+  },
+  "definition_of_done": {
+    "outputs": [
+      {"id": "day_type", "format": "single_value", "values": ["meeting-heavy", "shipping", "firefighting", "planning", "research"], "criteria": "Pick the one type that best fits what the transcript describes"},
+      {"id": "ships_today", "format": "json_array", "criteria": "Only items that can realistically be completed within one working day; each names a concrete deliverable"},
+      {"id": "parked_deep", "format": "json_array_of_objects", "criteria": "Threads that are turning deep or multi-day. Each object has thread, why_parked, and a concrete next_step so nothing is lost"},
+      {"id": "blockers", "format": "json_array", "criteria": "Concrete things stopping progress, drawn from the transcript"},
+      {"id": "customer_moment", "format": "single_sentence", "criteria": "A specific customer signal mentioned on the call, or 'none'"},
+      {"id": "takeaway", "format": "single_sentence", "criteria": "One honest sentence about the day; if nothing shipped, say why"},
+      {"id": "tags", "format": "json_array", "criteria": "Short topic tags like #pricing, #onboarding"}
+    ],
+    "constraints": [
+      "Every ships_today item must be completable in one working day; anything larger belongs in parked_deep",
+      "parked_deep must name both why the thread was parked and the smallest concrete next step",
+      "Extract only what the transcript supports - never invent decisions, work, or customer quotes",
+      "If nothing is shippable today, return an empty ships_today and explain in takeaway rather than inflating scope",
+      "Prefer specific nouns (a customer, a metric, a feature) over vague verbs"
+    ]
+  },
+  "validation": {
+    "auto_checks": ["all_output_ids_present", "ships_today items are one-day sized", "parked_deep items each have a next_step"],
+    "human_review": ["Does ships_today actually ship today?", "Did we correctly park the thread that went too deep?"]
+  },
+  "template": {
+    "system_prompt_ref": "05_agents/daily_from_transcript.prompt.md",
+    "input_schema": {"transcript": "string", "meeting_title": "string | null", "date": "string"},
+    "output_schema": {"day_type": "string", "ships_today": "array", "parked_deep": "array", "blockers": "array", "customer_moment": "string", "takeaway": "string", "tags": "array"}
+  }
+}

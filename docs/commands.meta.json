@@ -20,13 +20,17 @@
     "daily": {
       "examples": [
         "aikido daily",
-        "aikido daily --retroactive 2026-07-14"
+        "aikido daily --retroactive 2026-07-14",
+        "aikido daily --from-transcript standup.txt --title \"Friday sync\""
       ],
       "params": {
         "--guided": "Interactive prompt flow",
-        "--retroactive": "Capture for a past date (`YYYY-MM-DD`)"
+        "--retroactive": "Capture for a past date (`YYYY-MM-DD`)",
+        "--from-transcript": "Build a scope-disciplined daily prompt from a meeting transcript file",
+        "--title": "Meeting title for the transcript",
+        "--date": "Date for the entry (`YYYY-MM-DD`)"
       },
-      "defaults": { "--retroactive": "today" }
+      "defaults": { "--retroactive": "today", "--date": "today" }
     },
     "weekly": {
       "examples": [

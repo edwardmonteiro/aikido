@@ -100,6 +100,34 @@ class DailyCapture:
             return path
         return self.guided(retroactive)
 
+    def from_transcript(
+        self,
+        transcript_path: Path,
+        meeting_title: Optional[str] = None,
+        date: Optional[str] = None,
+    ) -> Dict:
+        """Build a scope-disciplined daily prompt from a meeting transcript.
+
+        aikido produces the *prompt* (the LLM runs it to yield the daily). The
+        transcript is inlined into the ``daily_from_transcript`` agent, which
+        separates today's shippable scope from deep threads that must be parked.
+        """
+        from aikido.core.transpiler import AikidoTranspiler
+
+        transcript_path = Path(transcript_path)
+        text = transcript_path.read_text(encoding="utf-8")
+        date = date or datetime.now().strftime("%Y-%m-%d")
+        week = week_of(date)
+
+        transpiler = AikidoTranspiler(self.project_root)
+        return transpiler.build(
+            "daily_from_transcript",
+            week=week,
+            transcript=text,
+            meeting_title=meeting_title or transcript_path.stem,
+            date=date,
+        )
+
     def save(self, data: Dict[str, str]) -> Path:
         """Non-interactive save (used by tests / scripted capture)."""
         date = data["date"]

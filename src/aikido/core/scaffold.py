@@ -30,10 +30,12 @@ CONTROL_PLANE_FILES = [
 TEMPLATE_FILES = [
     "_base.prompt.md",
     "founder_weekly_review.prompt.md",
+    "daily_from_transcript.prompt.md",
 ]
 
 CONTRACT_FILES = [
     "founder_weekly_review.json",
+    "daily_from_transcript.json",
 ]
 
 # Seed knowledge-base files so focus-area includes and validate() have targets.
