@@ -106,6 +106,13 @@ pip install -e ".[dev]"
 pytest tests/
 ```
 
+### Transcript → daily webhook (Azure Functions)
+
+`azure/` is a deployable webhook that turns each Microsoft Teams meeting
+transcript (or a manual paste) into a scope-disciplined daily and opens it as a
+pull request — using the `daily_from_transcript` agent + Claude. See
+[`azure/README.md`](azure/README.md) for deploy + Power Automate wiring.
+
 ### Regenerating the command reference
 
 `docs/commands.html` is a build artifact — it's rendered through aikido's own

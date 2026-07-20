@@ -1,0 +1,5 @@
+azure-functions
+anthropic>=0.69
+requests>=2.31
+# aikido itself (the transpiler + daily_from_transcript agent) from the repo:
+aikido @ git+https://github.com/edwardmonteiro/aikido.git@main
