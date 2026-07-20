@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Command reference — aikido</title>
+<meta name="description" content="Full reference for all 12 aikido CLI commands and their options.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="nav">
+  <a class="brand" href="index.html"><span class="mark">合</span> aikido</a>
+  <div class="links">
+    <a href="getting-started.html">Getting started</a>
+    <a href="commands.html" class="active">Commands</a>
+    <a href="concepts.html">Concepts</a>
+    <a href="https://github.com/edwardmonteiro/aikido">GitHub</a>
+    <a href="#" id="theme-toggle" title="Toggle theme">◐</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <h1>Command reference</h1>
+  <p class="lead">All 12 commands. Options use Typer conventions — underscores become hyphens (<code>--focus-area</code>), and booleans get a <code>--no-</code> negation (<code>--no-git</code>).</p>
+
+  <section>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><a href="#init"><code>init</code></a></td><td>Scaffold dirs, default templates/contracts/control-plane, git init</td></tr>
+          <tr><td><a href="#daily"><code>daily</code></a></td><td>Interactive daily capture → weekly cadence</td></tr>
+          <tr><td><a href="#weekly"><code>weekly</code></a></td><td>Aggregate daily logs, then transpile agents</td></tr>
+          <tr><td><a href="#build_agent"><code>build_agent</code></a></td><td>Transpile one template + contract → flat Markdown</td></tr>
+          <tr><td><a href="#update"><code>update</code></a></td><td>Update domain knowledge or support themes</td></tr>
+          <tr><td><a href="#sync"><code>sync</code></a></td><td>Pull from Notion/Linear/Slack/Stripe</td></tr>
+          <tr><td><a href="#archive"><code>archive</code></a></td><td>Compress old weekly files</td></tr>
+          <tr><td><a href="#onboard"><code>onboard</code></a></td><td>Generate an onboarding brief</td></tr>
+          <tr><td><a href="#investor"><code>investor</code></a></td><td>Generate an investor update</td></tr>
+          <tr><td><a href="#dashboard"><code>dashboard</code></a></td><td>Knowledge-system health dashboard</td></tr>
+          <tr><td><a href="#validate"><code>validate</code></a></td><td>Check includes, variables, contracts, stale files</td></tr>
+          <tr><td><a href="#config"><code>config</code></a></td><td>Manage <code>.aikido/config.yaml</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="init">
+    <h2><code>aikido init</code></h2>
+    <p>Initialize a project: create every directory, write the default templates, contracts, and control-plane files, and initialize git.</p>
+    <pre><code><span class="tok-p">$</span> aikido init my-company
+<span class="tok-p">$</span> aikido init my-company --no-git
+<span class="tok-p">$</span> aikido init my-company --remote git@github.com:me/my-company.git</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>name</code></td><td>—</td><td>Project directory name (required)</td></tr>
+        <tr><td><code>--template</code></td><td><code>default</code></td><td>Starter template set</td></tr>
+        <tr><td><code>--git / --no-git</code></td><td><code>--git</code></td><td>Initialize a git repo + first commit</td></tr>
+        <tr><td><code>--remote</code></td><td>—</td><td>Add an <code>origin</code> remote URL</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="daily">
+    <h2><code>aikido daily</code></h2>
+    <p>Guided daily capture. Prompts for day type, ships, blockers, customer moment, takeaway, and people; auto-tags from content; saves to <code>01_weekly_cadence/{week}/{date}_daily.md</code>.</p>
+    <pre><code><span class="tok-p">$</span> aikido daily
+<span class="tok-p">$</span> aikido daily --retroactive 2026-07-14</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--guided / --no-guided</code></td><td><code>--guided</code></td><td>Interactive prompt flow</td></tr>
+        <tr><td><code>--retroactive</code></td><td>today</td><td>Capture for a past date (<code>YYYY-MM-DD</code>)</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="weekly">
+    <h2><code>aikido weekly</code></h2>
+    <p>Aggregate the week's daily logs into <code>decisions.md</code>, <code>blockers.md</code>, <code>customer_signals.md</code>, and <code>daily_summary.md</code>, then transpile every agent that has a matching contract.</p>
+    <pre><code><span class="tok-p">$</span> aikido weekly
+<span class="tok-p">$</span> aikido weekly --week 2026-W29
+<span class="tok-p">$</span> aikido weekly --no-build          <span class="tok-c"># aggregate only</span>
+<span class="tok-p">$</span> aikido weekly --partial            <span class="tok-c"># skip agents that fail to build</span></code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--week</code></td><td>current ISO week</td><td>Week id, e.g. <code>2026-W29</code></td></tr>
+        <tr><td><code>--build / --no-build</code></td><td><code>--build</code></td><td>Transpile agents after aggregating</td></tr>
+        <tr><td><code>--partial</code></td><td><code>false</code></td><td>Treat build failures as skips, not errors</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="build_agent">
+    <h2><code>aikido build_agent</code></h2>
+    <p>Transpile a single Jinja2 template + JSON contract into a flat Markdown artifact in <code>06_dist/</code>.</p>
+    <pre><code><span class="tok-p">$</span> aikido build_agent founder_weekly_review --week 2026-W29
+<span class="tok-p">$</span> aikido build_agent founder_weekly_review --week 2026-W29 --focus-area gtm
+<span class="tok-p">$</span> aikido build_agent founder_weekly_review --emergency</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>agent</code></td><td>—</td><td>Agent name, matching <code>05_agents/{agent}.prompt.md</code> (required)</td></tr>
+        <tr><td><code>--week</code></td><td>—</td><td>Week of context to inline</td></tr>
+        <tr><td><code>--focus-area</code></td><td>—</td><td><code>product</code> or <code>gtm</code> — pulls in extra domain context</td></tr>
+        <tr><td><code>--emergency</code></td><td><code>false</code></td><td>Flag the build as an emergency variant</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note">Exits non-zero and prints the failing stage (<code>pre_transpile</code>, <code>transpile</code>, or <code>post_transpile</code>) when a build fails.</div>
+  </section>
+
+  <section id="update">
+    <h2><code>aikido update</code></h2>
+    <p>Append an update to a domain-knowledge or support-theme file, stamped with its source.</p>
+    <pre><code><span class="tok-p">$</span> aikido update 02_domain_knowledge/product/roadmap.md --from-source linear
+<span class="tok-p">$</span> aikido update 03_support_tickets/themes/churn.md --tickets "T-101,T-102"</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>path</code></td><td>File to update (required)</td></tr>
+        <tr><td><code>--from-source</code></td><td>Named source (e.g. <code>linear</code>, <code>notion</code>)</td></tr>
+        <tr><td><code>--url</code></td><td>Source URL</td></tr>
+        <tr><td><code>--tickets</code></td><td>Comma-separated ticket ids</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="sync">
+    <h2><code>aikido sync</code></h2>
+    <p>Pull from an external source into the knowledge base. Routes to a sensible default file per source, or override with <code>--to-path</code>.</p>
+    <pre><code><span class="tok-p">$</span> aikido sync notion --since 2026-07-01
+<span class="tok-p">$</span> aikido sync slack --channel "#feedback"
+<span class="tok-p">$</span> aikido sync stripe --to-path 02_domain_knowledge/go_to_market/pricing.md</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>from_source</code></td><td><code>notion</code> · <code>linear</code> · <code>slack</code> · <code>stripe</code> (required)</td></tr>
+        <tr><td><code>--to-path</code></td><td>Override the destination file</td></tr>
+        <tr><td><code>--channel</code></td><td>Slack channel to pull</td></tr>
+        <tr><td><code>--since</code></td><td>Only pull items since this date</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="archive">
+    <h2><code>aikido archive</code></h2>
+    <p>Move old weekly directories into <code>07_archive/</code>. Accepts a single week, a comma list, or a range (<code>2026-W01..2026-W12</code>).</p>
+    <pre><code><span class="tok-p">$</span> aikido archive 2026-W29
+<span class="tok-p">$</span> aikido archive 2026-W01..2026-W12
+<span class="tok-p">$</span> aikido archive 2026-W29 --no-compress   <span class="tok-c"># write a summary instead of a tarball</span></code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>weeks</code></td><td>—</td><td>Week id, list, or range (required)</td></tr>
+        <tr><td><code>--compress / --no-compress</code></td><td><code>--compress</code></td><td>Tar.gz vs. Markdown summary</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="onboard">
+    <h2><code>aikido onboard</code></h2>
+    <p>Generate an onboarding brief for a new team member, seeded from the control plane and available weekly context.</p>
+    <pre><code><span class="tok-p">$</span> aikido onboard "Jane Doe" engineer
+<span class="tok-p">$</span> aikido onboard "Sam Lee" "gtm lead" --from-week 2026-W20</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>name</code> / <code>role</code></td><td>New hire's name and role (required)</td></tr>
+        <tr><td><code>--from-week</code></td><td>Include context from this week onward</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="investor">
+    <h2><code>aikido investor</code></h2>
+    <p>Generate an investor update from captured customer signals.</p>
+    <pre><code><span class="tok-p">$</span> aikido investor
+<span class="tok-p">$</span> aikido investor --since last_board_meeting --format markdown</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--brief / --no-brief</code></td><td><code>--brief</code></td><td>Concise vs. full update</td></tr>
+        <tr><td><code>--since</code></td><td><code>last_board_meeting</code></td><td>Reporting window</td></tr>
+        <tr><td><code>--format</code></td><td><code>email</code></td><td><code>email</code> or <code>markdown</code></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="dashboard">
+    <h2><code>aikido dashboard</code></h2>
+    <p>A visual overview of knowledge-system health: weeks captured, agents defined, artifacts built, latest week, and optionally stale files.</p>
+    <pre><code><span class="tok-p">$</span> aikido dashboard
+<span class="tok-p">$</span> aikido dashboard --my-agents --stale</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--my-agents</code></td><td><code>false</code></td><td>List defined agents</td></tr>
+        <tr><td><code>--status / --no-status</code></td><td><code>--status</code></td><td>Show the status table</td></tr>
+        <tr><td><code>--stale</code></td><td><code>false</code></td><td>Count stale files</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="validate">
+    <h2><code>aikido validate</code></h2>
+    <p>Check the knowledge base for broken includes, undefined variables, contract mismatches, and stale files. Exits non-zero if any non-stale issue is found.</p>
+    <pre><code><span class="tok-p">$</span> aikido validate
+<span class="tok-p">$</span> aikido validate --path 05_agents/founder_weekly_review.prompt.md</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Option</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--path</code></td><td>Limit validation to one template</td></tr>
+        <tr><td><code>--fix</code></td><td>Reserved for auto-fixes</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="config">
+    <h2><code>aikido config</code></h2>
+    <p>Read and write <code>.aikido/config.yaml</code> using dotted keys.</p>
+    <pre><code><span class="tok-p">$</span> aikido config --list-all
+<span class="tok-p">$</span> aikido config defaults.agent
+<span class="tok-p">$</span> aikido config defaults.focus_area product</code></pre>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Argument</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>key</code></td><td>Dotted key to read (e.g. <code>git.remote</code>)</td></tr>
+        <tr><td><code>value</code></td><td>Provide with a key to set it</td></tr>
+        <tr><td><code>--list-all</code></td><td>Print the whole config as a table</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>aikido — AI-native knowledge &amp; decision operations. MIT licensed.</span>
+    <span><a href="https://github.com/edwardmonteiro/aikido">github.com/edwardmonteiro/aikido</a></span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var key = "aikido-theme";
+    var root = document.documentElement;
+    var saved = localStorage.getItem(key);
+    if (saved) root.setAttribute("data-theme", saved);
+    var btn = document.getElementById("theme-toggle");
+    if (btn) btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      var cur = root.getAttribute("data-theme");
+      var isDark = cur ? cur === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = isDark ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      localStorage.setItem(key, next);
+    });
+  })();
+</script>
+</body>
+</html>

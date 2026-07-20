@@ -7,6 +7,11 @@ templates, JSON contracts, build-time validation, and flat artifact output.
 You capture what happens day to day, aggregate it weekly, and *transpile*
 reusable AI agents (system prompts) from your own knowledge base.
 
+📖 **Documentation:** the `docs/` directory is a hand-authored static site
+(welcome page, getting started, command reference, concepts). Serve it locally
+with `python -m http.server -d docs`, or publish it via GitHub Pages
+(Settings → Pages → deploy from branch, `/docs` folder).
+
 ## Install
 
 ```bash
