@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowledge structure — aikido</title>
+<meta name="description" content="A graph of the aikido knowledge system: how files on disk compose, through the transpiler, into flat Markdown artifacts.">
+<link rel="stylesheet" href="style.css">
+<style>
+  .diagram {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    padding: 1rem;
+    margin-top: 1.25rem;
+  }
+  .diagram svg { display: block; width: 100%; height: auto; min-width: 760px; }
+  svg text { font-family: var(--sans); }
+  .n-box    { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
+  .n-outer  { fill: none; stroke: var(--border); stroke-width: 1.2; }
+  .n-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+  .n-mini   { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
+  .tx-h   { fill: var(--text); font-size: 13px; font-weight: 600; }
+  .tx-h2  { fill: var(--accent); font-size: 15px; font-weight: 700; }
+  .tx     { fill: var(--text); font-size: 11.5px; }
+  .tx-mut { fill: var(--muted); font-size: 10.5px; }
+  .tx-lbl { fill: var(--muted); font-size: 10px; font-style: italic; }
+  .edge   { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+  .edge-a { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+  .edge-d { stroke-dasharray: 5 4; }
+  #ah path  { fill: var(--muted); }
+  #aha path { fill: var(--accent); }
+  .legend { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-top: 0.9rem; font-size: 0.85rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 0.45rem; }
+  .swatch { width: 26px; height: 0; border-top-width: 2px; border-top-style: solid; display: inline-block; }
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="brand" href="index.html"><span class="mark">合</span> aikido</a>
+  <div class="links">
+    <a href="getting-started.html">Getting started</a>
+    <a href="commands.html">Commands</a>
+    <a href="concepts.html">Concepts</a>
+    <a href="structure.html" class="active">Structure</a>
+    <a href="https://github.com/edwardmonteiro/aikido">GitHub</a>
+    <a href="#" id="theme-toggle" title="Toggle theme">◐</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <h1>Knowledge structure</h1>
+  <p class="lead">Everything is a file. The knowledge base on the left composes — through the transpiler — into flat Markdown artifacts on the right. This is the whole system on one page.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 1000 640" role="img" aria-label="Graph of the aikido knowledge system: knowledge-base files feed the transpiler, which writes flat Markdown artifacts.">
+      <defs>
+        <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L7,3 L0,6 Z"/>
+        </marker>
+        <marker id="aha" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L7,3 L0,6 Z"/>
+        </marker>
+      </defs>
+
+      <!-- ============ Knowledge base container ============ -->
+      <rect class="n-outer" x="30" y="30" width="380" height="582" rx="12"/>
+      <text class="tx-h" x="46" y="54">Knowledge base — plain files on disk</text>
+
+      <!-- Control plane -->
+      <rect class="n-box" x="50" y="70" width="340" height="80" rx="8"/>
+      <text class="tx-h" x="64" y="92">Control plane</text>
+      <text class="tx-mut" x="64" y="108">00_control_plane/</text>
+      <text class="tx" x="64" y="127">founder_identity · tone_voice</text>
+      <text class="tx" x="64" y="143">safety_guardrails</text>
+
+      <!-- Weekly cadence -->
+      <rect class="n-box" x="50" y="160" width="340" height="112" rx="8"/>
+      <text class="tx-h" x="64" y="180">Weekly cadence</text>
+      <text class="tx-mut" x="64" y="196">01_weekly_cadence/{week}/</text>
+      <rect class="n-mini" x="64" y="208" width="96" height="46" rx="6"/>
+      <text class="tx" x="112" y="228" text-anchor="middle">Daily logs</text>
+      <text class="tx-mut" x="112" y="243" text-anchor="middle">*_daily.md</text>
+      <path class="edge-a" d="M160,231 L214,231" marker-end="url(#aha)"/>
+      <rect class="n-mini" x="222" y="204" width="156" height="56" rx="6"/>
+      <text class="tx" x="300" y="222" text-anchor="middle">Rollups</text>
+      <text class="tx-mut" x="300" y="237" text-anchor="middle">decisions · blockers</text>
+      <text class="tx-mut" x="300" y="250" text-anchor="middle">customer_signals · summary</text>
+
+      <!-- Domain knowledge -->
+      <rect class="n-box" x="50" y="282" width="340" height="76" rx="8"/>
+      <text class="tx-h" x="64" y="302">Domain knowledge</text>
+      <text class="tx-mut" x="64" y="318">02_domain_knowledge/</text>
+      <text class="tx" x="64" y="337">product/ · go_to_market/</text>
+      <text class="tx-mut" x="64" y="351">roadmap · architecture · pricing · personas</text>
+
+      <!-- Support tickets -->
+      <rect class="n-box" x="50" y="368" width="340" height="58" rx="8"/>
+      <text class="tx-h" x="64" y="388">Support tickets</text>
+      <text class="tx-mut" x="64" y="404">03_support_tickets/themes/</text>
+      <text class="tx" x="64" y="419">feature_requests · onboarding_friction</text>
+
+      <!-- Contracts -->
+      <rect class="n-box" x="50" y="436" width="340" height="74" rx="8"/>
+      <text class="tx-h" x="64" y="456">Contracts</text>
+      <text class="tx-mut" x="64" y="472">04_contracts/*.json</text>
+      <text class="tx" x="64" y="491">definition_of_done · constraints</text>
+      <text class="tx-mut" x="64" y="505">outputs · validation</text>
+
+      <!-- Agent templates -->
+      <rect class="n-box" x="50" y="520" width="340" height="82" rx="8"/>
+      <text class="tx-h" x="64" y="540">Agent templates</text>
+      <rect class="n-mini" x="64" y="552" width="128" height="38" rx="6"/>
+      <text class="tx" x="128" y="571" text-anchor="middle">_base.prompt.md</text>
+      <text class="tx-mut" x="128" y="584" text-anchor="middle">05_agents/</text>
+      <path class="edge-a" d="M192,571 L214,571" marker-end="url(#aha)"/>
+      <text class="tx-lbl" x="203" y="549" text-anchor="middle">extends</text>
+      <rect class="n-mini" x="222" y="552" width="156" height="38" rx="6"/>
+      <text class="tx" x="300" y="571" text-anchor="middle">founder_weekly_review</text>
+      <text class="tx-mut" x="300" y="584" text-anchor="middle">.prompt.md</text>
+
+      <!-- ============ Transpiler ============ -->
+      <rect class="n-accent" x="560" y="250" width="210" height="182" rx="12"/>
+      <text class="tx-h2" x="665" y="282" text-anchor="middle">AikidoTranspiler</text>
+      <text class="tx" x="578" y="316">1 · pre_transpile</text>
+      <text class="tx-mut" x="578" y="330">includes &amp; contract outputs</text>
+      <text class="tx" x="578" y="358">2 · transpile</text>
+      <text class="tx-mut" x="578" y="372">render Jinja2</text>
+      <text class="tx" x="578" y="400">3 · post_transpile</text>
+      <text class="tx-mut" x="578" y="414">check constraints</text>
+
+      <!-- ============ Outputs ============ -->
+      <rect class="n-box" x="830" y="298" width="150" height="80" rx="8"/>
+      <text class="tx-h" x="905" y="332" text-anchor="middle">06_dist/</text>
+      <text class="tx-mut" x="905" y="352" text-anchor="middle">{agent}_{week}.md</text>
+      <text class="tx-mut" x="905" y="366" text-anchor="middle">flat artifact</text>
+
+      <rect class="n-box" x="830" y="470" width="150" height="66" rx="8"/>
+      <text class="tx-h" x="905" y="500" text-anchor="middle">07_archive/</text>
+      <text class="tx-mut" x="905" y="519" text-anchor="middle">{week}.tar.gz</text>
+
+      <!-- ============ Edges: sources -> transpiler ============ -->
+      <path class="edge" d="M392,110 C 476,110 486,282 558,284" marker-end="url(#ah)"/>
+      <path class="edge" d="M392,216 C 470,216 490,304 558,306" marker-end="url(#ah)"/>
+      <path class="edge" d="M392,320 C 470,320 500,332 558,332" marker-end="url(#ah)"/>
+      <path class="edge" d="M392,397 C 470,397 505,360 558,358" marker-end="url(#ah)"/>
+      <path class="edge" d="M392,473 C 484,473 512,388 558,386" marker-end="url(#ah)"/>
+      <path class="edge" d="M392,571 C 500,571 522,412 558,410" marker-end="url(#ah)"/>
+
+      <!-- Transpiler -> dist -->
+      <path class="edge-a" d="M770,338 L828,338" marker-end="url(#aha)"/>
+      <text class="tx-lbl" x="799" y="330" text-anchor="middle">write</text>
+
+      <!-- Weekly cadence -> archive (dashed, aikido archive) -->
+      <path class="edge edge-d" d="M392,200 L806,200 L806,503 L828,503" marker-end="url(#ah)"/>
+      <text class="tx-lbl" x="600" y="192" text-anchor="middle">aikido archive · old weeks</text>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <span><i class="swatch" style="border-color: var(--accent)"></i> build / transform</span>
+    <span><i class="swatch" style="border-color: var(--muted)"></i> composed into the artifact</span>
+    <span><i class="swatch edge-d" style="border-color: var(--muted); border-top-style: dashed"></i> lifecycle (archive)</span>
+  </div>
+
+  <section>
+    <h2>How to read it</h2>
+    <ul>
+      <li><strong>Left — the knowledge base.</strong> Six kinds of files, each in its own numbered directory. You edit these by hand or via <code>aikido daily</code>, <code>weekly</code>, <code>update</code>, and <code>sync</code>.</li>
+      <li><strong>Daily → rollups.</strong> <code>aikido weekly</code> aggregates the week's <code>*_daily.md</code> logs into <code>decisions</code>, <code>blockers</code>, <code>customer_signals</code>, and <code>daily_summary</code>.</li>
+      <li><strong>Templates inherit.</strong> Each agent <code>{% extends %}</code> a shared <code>_base.prompt.md</code>, so identity, definition-of-done, and constraints are defined once.</li>
+      <li><strong>Center — the transpiler.</strong> It resolves every include, renders the template against the contract, and checks constraints in three gated stages.</li>
+      <li><strong>Right — the artifacts.</strong> Successful builds land in <code>06_dist/</code> as flat, self-contained Markdown. Old weeks compress into <code>07_archive/</code>.</li>
+    </ul>
+    <p class="muted small">This diagram is a hand-authored SVG — no charting library, no build step — so it renders identically everywhere and diffs like any other file, the same way aikido treats prompts.</p>
+  </section>
+
+  <section>
+    <h2>Directory map</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Directory</th><th>Role in the graph</th></tr></thead>
+      <tbody>
+        <tr><td><code>00_control_plane/</code></td><td>Stable identity, tone, and safety — inherited by every agent</td></tr>
+        <tr><td><code>01_weekly_cadence/</code></td><td>Daily logs and their aggregated weekly rollups (time-series input)</td></tr>
+        <tr><td><code>02_domain_knowledge/</code></td><td>Product &amp; go-to-market knowledge, pulled in by focus area</td></tr>
+        <tr><td><code>03_support_tickets/</code></td><td>Support themes</td></tr>
+        <tr><td><code>04_contracts/</code></td><td>JSON contracts — the definition of done and constraints the transpiler enforces</td></tr>
+        <tr><td><code>05_agents/</code></td><td>Jinja2 templates (<code>_base</code> + concrete agents)</td></tr>
+        <tr><td><code>06_dist/</code></td><td>Built flat-Markdown artifacts</td></tr>
+        <tr><td><code>07_archive/</code></td><td>Compressed old weeks</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>aikido — AI-native knowledge &amp; decision operations. MIT licensed.</span>
+    <span><a href="https://github.com/edwardmonteiro/aikido">github.com/edwardmonteiro/aikido</a></span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var key = "aikido-theme";
+    var root = document.documentElement;
+    var saved = localStorage.getItem(key);
+    if (saved) root.setAttribute("data-theme", saved);
+    var btn = document.getElementById("theme-toggle");
+    if (btn) btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      var cur = root.getAttribute("data-theme");
+      var isDark = cur ? cur === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = isDark ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      localStorage.setItem(key, next);
+    });
+  })();
+</script>
+</body>
+</html>

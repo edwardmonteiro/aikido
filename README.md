@@ -10,6 +10,7 @@
 [Getting started](docs/getting-started.html) ·
 [Commands](docs/commands.html) ·
 [Concepts](docs/concepts.html) ·
+[Structure](docs/structure.html) ·
 [Documentation site](docs/index.html)
 
 `Python 3.10+` &nbsp;•&nbsp; `Typer` &nbsp;•&nbsp; `Jinja2` &nbsp;•&nbsp; `Pydantic` &nbsp;•&nbsp; `MIT`
