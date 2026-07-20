@@ -1,0 +1,151 @@
+{
+  "order": [
+    "init", "daily", "weekly", "build_agent", "update", "sync",
+    "archive", "onboard", "investor", "dashboard", "validate", "config"
+  ],
+  "commands": {
+    "init": {
+      "examples": [
+        "aikido init my-company",
+        "aikido init my-company --no-git",
+        "aikido init my-company --remote git@github.com:me/my-company.git"
+      ],
+      "params": {
+        "name": "Project directory name (required)",
+        "--template": "Starter template set",
+        "--git": "Initialize a git repo + first commit",
+        "--remote": "Add an `origin` remote URL"
+      }
+    },
+    "daily": {
+      "examples": [
+        "aikido daily",
+        "aikido daily --retroactive 2026-07-14"
+      ],
+      "params": {
+        "--guided": "Interactive prompt flow",
+        "--retroactive": "Capture for a past date (`YYYY-MM-DD`)"
+      },
+      "defaults": { "--retroactive": "today" }
+    },
+    "weekly": {
+      "examples": [
+        "aikido weekly",
+        "aikido weekly --week 2026-W29",
+        "aikido weekly --no-build",
+        "aikido weekly --partial"
+      ],
+      "params": {
+        "--build": "Transpile agents after aggregating",
+        "--partial": "Treat build failures as skips, not errors",
+        "--week": "Week id, e.g. `2026-W29`"
+      },
+      "defaults": { "--week": "current ISO week" }
+    },
+    "build_agent": {
+      "examples": [
+        "aikido build_agent founder_weekly_review --week 2026-W29",
+        "aikido build_agent founder_weekly_review --week 2026-W29 --focus-area gtm",
+        "aikido build_agent founder_weekly_review --emergency"
+      ],
+      "params": {
+        "agent": "Agent name, matching `05_agents/{agent}.prompt.md` (required)",
+        "--week": "Week of context to inline",
+        "--focus-area": "`product` or `gtm` — pulls in extra domain context",
+        "--emergency": "Flag the build as an emergency variant"
+      },
+      "note": "Exits non-zero and prints the failing stage (`pre_transpile`, `transpile`, or `post_transpile`) when a build fails."
+    },
+    "update": {
+      "examples": [
+        "aikido update 02_domain_knowledge/product/roadmap.md --from-source linear",
+        "aikido update 03_support_tickets/themes/churn.md --tickets \"T-101,T-102\""
+      ],
+      "params": {
+        "path": "File to update (required)",
+        "--from-source": "Named source (e.g. `linear`, `notion`)",
+        "--url": "Source URL",
+        "--tickets": "Comma-separated ticket ids"
+      }
+    },
+    "sync": {
+      "examples": [
+        "aikido sync notion --since 2026-07-01",
+        "aikido sync slack --channel \"#feedback\"",
+        "aikido sync stripe --to-path 02_domain_knowledge/go_to_market/pricing.md"
+      ],
+      "params": {
+        "from_source": "`notion` · `linear` · `slack` · `stripe` (required)",
+        "--to-path": "Override the destination file",
+        "--channel": "Slack channel to pull",
+        "--since": "Only pull items since this date"
+      }
+    },
+    "archive": {
+      "examples": [
+        "aikido archive 2026-W29",
+        "aikido archive 2026-W01..2026-W12",
+        "aikido archive 2026-W29 --no-compress"
+      ],
+      "params": {
+        "weeks": "Week id, comma list, or range like `2026-W01..2026-W12` (required)",
+        "--compress": "Tar.gz vs. a Markdown summary"
+      }
+    },
+    "onboard": {
+      "examples": [
+        "aikido onboard \"Jane Doe\" engineer",
+        "aikido onboard \"Sam Lee\" \"gtm lead\" --from-week 2026-W20"
+      ],
+      "params": {
+        "name": "New hire's name (required)",
+        "role": "New hire's role (required)",
+        "--from-week": "Include context from this week onward"
+      }
+    },
+    "investor": {
+      "examples": [
+        "aikido investor",
+        "aikido investor --since last_board_meeting --format markdown"
+      ],
+      "params": {
+        "--brief": "Concise vs. full update",
+        "--since": "Reporting window",
+        "--format": "`email` or `markdown`"
+      }
+    },
+    "dashboard": {
+      "examples": [
+        "aikido dashboard",
+        "aikido dashboard --my-agents --stale"
+      ],
+      "params": {
+        "--my-agents": "List defined agents",
+        "--status": "Show the status table",
+        "--stale": "Count stale files"
+      }
+    },
+    "validate": {
+      "examples": [
+        "aikido validate",
+        "aikido validate --path 05_agents/founder_weekly_review.prompt.md"
+      ],
+      "params": {
+        "--path": "Limit validation to one template",
+        "--fix": "Reserved for auto-fixes"
+      }
+    },
+    "config": {
+      "examples": [
+        "aikido config --list-all",
+        "aikido config --key defaults.agent",
+        "aikido config --key defaults.focus_area --value product"
+      ],
+      "params": {
+        "--key": "Dotted key to read (e.g. `git.remote`)",
+        "--value": "Provide with a key to set it",
+        "--list-all": "Print the whole config as a table"
+      }
+    }
+  }
+}

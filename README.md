@@ -1,16 +1,39 @@
-# aikido
+<div align="center">
 
-**AI-native knowledge & decision operations for startup teams.**
+# 合 &nbsp;aikido
 
-`aikido` treats prompts as software artifacts: modular Markdown files, Jinja2
-templates, JSON contracts, build-time validation, and flat artifact output.
+### AI-native knowledge &amp; decision operations for startup teams
+
+*Treat prompts as software artifacts — modular Markdown, Jinja2 templates,*
+*JSON contracts, build-time validation, and flat artifact output.*
+
+[Getting started](docs/getting-started.html) ·
+[Commands](docs/commands.html) ·
+[Concepts](docs/concepts.html) ·
+[Documentation site](docs/index.html)
+
+`Python 3.10+` &nbsp;•&nbsp; `Typer` &nbsp;•&nbsp; `Jinja2` &nbsp;•&nbsp; `Pydantic` &nbsp;•&nbsp; `MIT`
+
+</div>
+
+---
+
 You capture what happens day to day, aggregate it weekly, and *transpile*
-reusable AI agents (system prompts) from your own knowledge base.
+reusable AI agents (system prompts) from your own knowledge base — every input
+and output a plain file you can diff, review, and commit. No database, no hidden
+state.
 
-📖 **Documentation:** the `docs/` directory is a hand-authored static site
-(welcome page, getting started, command reference, concepts). Serve it locally
-with `python -m http.server -d docs`, or publish it via GitHub Pages
-(Settings → Pages → deploy from branch, `/docs` folder).
+```
+  daily logs  ──▶  weekly rollups  ──▶  [ template + contract ]  ──▶  06_dist/*.md
+   (capture)        (aggregate)              (transpile)              (flat artifact)
+```
+
+📖 **Documentation:** the [`docs/`](docs/) directory is a dependency-free static
+site (welcome page, getting started, command reference, concepts). The command
+reference is *generated from the live CLI* by `scripts/gen_docs.py`, so it never
+drifts from the code. Serve it locally with `python -m http.server -d docs`, or
+publish it via GitHub Pages (Settings → Pages → deploy from branch, `/docs`
+folder).
 
 ## Install
 
@@ -81,6 +104,19 @@ On success the artifact is written to `06_dist/{agent}_{week}.md`.
 pip install -e ".[dev]"
 pytest tests/
 ```
+
+### Regenerating the command reference
+
+`docs/commands.html` is a build artifact — it's rendered through aikido's own
+transpiler from the live CLI plus curated prose in `docs/commands.meta.json`.
+After adding or changing a command, regenerate it:
+
+```bash
+python scripts/gen_docs.py
+```
+
+The generator warns if a CLI command is missing from `commands.meta.json` (or
+vice versa), so the docs can't silently fall out of sync with the code.
 
 ## License
 
