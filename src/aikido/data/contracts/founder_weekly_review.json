@@ -1,0 +1,33 @@
+{
+  "job_id": "weekly-founder-review",
+  "version": "1.0.0",
+  "objective": {
+    "job": "Help founder review week and set next week's priorities",
+    "user": "Founder/CEO",
+    "context": "Pre-weekend strategic reflection",
+    "success_feeling": "Clarity on what matters + confidence in next steps"
+  },
+  "definition_of_done": {
+    "outputs": [
+      {"id": "next_week_priorities", "format": "numbered_list", "count": "3", "criteria": "Each priority must reference a specific customer signal or blocker from this week"},
+      {"id": "decision_recommendation", "format": "single_paragraph", "criteria": "Must state the decision, 2 options considered, and recommended option with rationale"},
+      {"id": "risk_flag", "format": "single_sentence", "criteria": "Must be specific, actionable, and include suggested mitigation"},
+      {"id": "investor_snippet", "format": "2_sentences", "criteria": "Must include 1 metric and 1 narrative milestone"}
+    ],
+    "constraints": [
+      "Total output < 500 words",
+      "Tone must match founder_identity.md",
+      "No generic advice",
+      "Every priority must name a specific noun (customer, metric, or feature); vague verbs alone FAIL"
+    ]
+  },
+  "validation": {
+    "auto_checks": ["word_count < 500", "all_output_ids_present", "references_found_in_weekly_data"],
+    "human_review": ["Does this feel like me?", "Would I actually act on priority #1 tomorrow?"]
+  },
+  "template": {
+    "system_prompt_ref": "05_agents/founder_weekly_review.prompt.md",
+    "input_schema": {"week": "string", "focus_area": "string | null"},
+    "output_schema": {"next_week_priorities": "array", "decision_recommendation": "string", "risk_flag": "string", "investor_snippet": "string"}
+  }
+}
