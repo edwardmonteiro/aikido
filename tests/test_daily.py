@@ -1,4 +1,5 @@
 from aikido.commands.daily import DailyCapture, week_of
+from aikido.core.scaffold import scaffold_project
 
 
 def test_week_of():
@@ -39,6 +40,26 @@ def test_save_and_aggregate(tmp_path):
     assert "Payment webhook flaky" in blockers
     assert "Acme asked about pricing seats" in signals
     assert "Pricing keeps coming up" in summary
+
+
+def test_from_transcript_builds_scoped_prompt(tmp_path):
+    scaffold_project(tmp_path)
+    transcript = tmp_path / "call.txt"
+    transcript.write_text(
+        "Ana: we should ship the export today.\n"
+        "Bruno: but the metrics pipeline needs a big multi-week rearchitecture."
+    )
+
+    cap = DailyCapture(tmp_path)
+    result = cap.from_transcript(transcript, meeting_title="Sync", date="2026-07-17")
+
+    assert result["success"], result.get("errors")
+    artifact = (tmp_path / "06_dist" / "daily_from_transcript_2026-W29.md").read_text()
+    # The scope-discipline scaffolding is present...
+    assert "ships_today" in artifact
+    assert "parked_deep" in artifact
+    # ...and the transcript was inlined verbatim.
+    assert "we should ship the export today" in artifact
 
 
 def test_tags_derived_from_content(tmp_path):

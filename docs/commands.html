@@ -31,7 +31,7 @@
         <thead><tr><th>Command</th><th>What it does</th></tr></thead>
         <tbody>
           <tr><td><a href="#init"><code>init</code></a></td><td>Initialize project. Create all dirs, default templates, contracts, git init.</td></tr>
-          <tr><td><a href="#daily"><code>daily</code></a></td><td>Interactive daily capture. Saves to <code>01_weekly_cadence/{week}/{date}_daily.md</code>.</td></tr>
+          <tr><td><a href="#daily"><code>daily</code></a></td><td>Daily capture. Interactive by default, or <code>--from-transcript</code> off a meeting.</td></tr>
           <tr><td><a href="#weekly"><code>weekly</code></a></td><td>Aggregate daily logs into weekly summaries, then transpile agents.</td></tr>
           <tr><td><a href="#build_agent"><code>build_agent</code></a></td><td>Transpile Jinja2 template + contract -> flat Markdown artifact in <code>06_dist/</code>.</td></tr>
           <tr><td><a href="#update"><code>update</code></a></td><td>Update domain knowledge or support themes.</td></tr>
@@ -82,9 +82,10 @@
   </section>
   <section id="daily">
     <h2><code>aikido daily</code></h2>
-    <p>Interactive daily capture. Saves to <code>01_weekly_cadence/{week}/{date}_daily.md</code>.</p>
+    <p>Daily capture. Interactive by default, or <code>--from-transcript</code> off a meeting.</p>
     <pre><code><span class="tok-p">$</span> aikido daily
 <span class="tok-p">$</span> aikido daily --retroactive 2026-07-14
+<span class="tok-p">$</span> aikido daily --from-transcript standup.txt --title "Friday sync"
 </code></pre>
     <div class="table-wrap"><table>
       <thead><tr><th>Argument / Option</th><th>Default</th><th>Description</th></tr></thead>
@@ -98,6 +99,21 @@
           <td><code>--retroactive</code></td>
           <td><code>today</code></td>
           <td>Capture for a past date (<code>YYYY-MM-DD</code>)</td>
+        </tr>
+        <tr>
+          <td><code>--from-transcript</code></td>
+          <td>—</td>
+          <td>Build a scope-disciplined daily prompt from a meeting transcript file</td>
+        </tr>
+        <tr>
+          <td><code>--title</code></td>
+          <td>—</td>
+          <td>Meeting title for the transcript</td>
+        </tr>
+        <tr>
+          <td><code>--date</code></td>
+          <td><code>today</code></td>
+          <td>Date for the entry (<code>YYYY-MM-DD</code>)</td>
         </tr>
       </tbody>
     </table></div>

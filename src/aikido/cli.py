@@ -60,12 +60,35 @@ def init(
 
 
 @app.command()
-def daily(guided: bool = True, retroactive: Optional[str] = None) -> None:
-    """Interactive daily capture. Saves to `01_weekly_cadence/{week}/{date}_daily.md`."""
+def daily(
+    guided: bool = True,
+    retroactive: Optional[str] = None,
+    from_transcript: Optional[str] = None,
+    title: Optional[str] = None,
+    date: Optional[str] = None,
+) -> None:
+    """Daily capture. Interactive by default, or `--from-transcript` off a meeting.
+
+    Saves to `01_weekly_cadence/{week}/{date}_daily.md` (guided), or builds a
+    scope-disciplined daily prompt from a transcript (`--from-transcript`).
+    """
     from aikido.commands.daily import DailyCapture
 
     root = _require_root()
     capture = DailyCapture(root)
+
+    if from_transcript:
+        result = capture.from_transcript(from_transcript, meeting_title=title, date=date)
+        if result["success"]:
+            console.print(f"[green]Built transcript daily prompt[/green] ({result['word_count']} words)")
+            console.print(f"  Artifact: {result['path']}")
+            console.print("  Run it in your LLM to get the scoped daily (ships-today vs parked-deep).")
+        else:
+            console.print(f"[red]Build failed at stage '{result['stage']}':[/red]")
+            for err in result["errors"]:
+                console.print(f"  - {err}")
+        return
+
     if guided:
         capture.guided(retroactive=retroactive)
     else:
