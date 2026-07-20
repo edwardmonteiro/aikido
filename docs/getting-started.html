@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started — aikido</title>
+<meta name="description" content="Install aikido and go from an empty directory to a validated AI agent artifact in five commands.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="nav">
+  <a class="brand" href="index.html"><span class="mark">合</span> aikido</a>
+  <div class="links">
+    <a href="getting-started.html" class="active">Getting started</a>
+    <a href="commands.html">Commands</a>
+    <a href="concepts.html">Concepts</a>
+    <a href="https://github.com/edwardmonteiro/aikido">GitHub</a>
+    <a href="#" id="theme-toggle" title="Toggle theme">◐</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <h1>Getting started</h1>
+  <p class="lead">From an empty directory to a validated AI-agent artifact in five commands.</p>
+
+  <section>
+    <h2>1. Install</h2>
+    <p>aikido needs Python 3.10+. Install it in editable mode from a clone of the repo:</p>
+    <pre><code><span class="tok-p">$</span> git clone https://github.com/edwardmonteiro/aikido
+<span class="tok-p">$</span> cd aikido
+<span class="tok-p">$</span> pip install -e .
+<span class="tok-p">$</span> aikido --help</code></pre>
+    <p>For development (tests, formatting, type-checking):</p>
+    <pre><code><span class="tok-p">$</span> pip install -e ".[dev]"
+<span class="tok-p">$</span> pytest tests/</code></pre>
+  </section>
+
+  <section>
+    <h2>2. Initialize a project</h2>
+    <p><code>aikido init</code> scaffolds the full knowledge tree, writes the default templates, contracts, and control-plane files, and (unless you pass <code>--no-git</code>) initializes a git repository with a first commit.</p>
+    <pre><code><span class="tok-p">$</span> aikido init my-company
+<span class="tok-p">$</span> cd my-company</code></pre>
+    <div class="note"><strong>Idempotent.</strong> Re-running <code>init</code> never overwrites files you've edited — it only fills in what's missing.</div>
+  </section>
+
+  <section>
+    <h2>3. Capture your day</h2>
+    <p>The guided daily capture asks a handful of questions — day type, what you shipped, blockers, a customer moment, and a one-sentence takeaway — then auto-tags the entry from its content and saves it under the current ISO week.</p>
+    <pre><code><span class="tok-p">$</span> aikido daily
+
+<span class="tok-c"># capturing a past day?</span>
+<span class="tok-p">$</span> aikido daily --retroactive 2026-07-14</code></pre>
+    <p class="muted small">Saved to <code>01_weekly_cadence/2026-W29/2026-07-14_daily.md</code>.</p>
+  </section>
+
+  <section>
+    <h2>4. Build the week</h2>
+    <p><code>aikido weekly</code> aggregates every daily log in the week into four rollups — <code>decisions.md</code>, <code>blockers.md</code>, <code>customer_signals.md</code>, <code>daily_summary.md</code> — and then transpiles every agent that has both a template and a contract.</p>
+    <pre><code><span class="tok-p">$</span> aikido weekly --week 2026-W29</code></pre>
+  </section>
+
+  <section>
+    <h2>5. Transpile a single agent</h2>
+    <p>To build one agent on demand — optionally scoped to a focus area that pulls in extra domain context:</p>
+    <pre><code><span class="tok-p">$</span> aikido build_agent founder_weekly_review --week 2026-W29
+<span class="tok-p">$</span> aikido build_agent founder_weekly_review --week 2026-W29 --focus-area product</code></pre>
+    <p>The result is a flat Markdown system prompt in <code>06_dist/</code> with all includes resolved, all contract outputs present, and constraints checked:</p>
+    <pre><code># Founder Identity
+...
+## This Week's Context (2026-W29)
+### Decisions
+- [2026-07-14] Shipped: Shipped SSO and new pricing page
+...
+## Output Format
+Return ONLY JSON:
+{
+  "next_week_priorities": ["string", "string", "string"],
+  "decision_recommendation": "string",
+  "risk_flag": "string",
+  "investor_snippet": "string"
+}</code></pre>
+  </section>
+
+  <section>
+    <h2>Keep it healthy</h2>
+    <p>Validate the knowledge base at any time — broken includes, undefined variables, contract mismatches, and stale files are all reported:</p>
+    <pre><code><span class="tok-p">$</span> aikido validate
+<span class="tok-p">$</span> aikido dashboard        <span class="tok-c"># system-health overview</span></code></pre>
+    <p>Next: browse the full <a href="commands.html">command reference</a> or read how the <a href="concepts.html">transpiler and contracts</a> fit together.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>aikido — AI-native knowledge &amp; decision operations. MIT licensed.</span>
+    <span><a href="https://github.com/edwardmonteiro/aikido">github.com/edwardmonteiro/aikido</a></span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var key = "aikido-theme";
+    var root = document.documentElement;
+    var saved = localStorage.getItem(key);
+    if (saved) root.setAttribute("data-theme", saved);
+    var btn = document.getElementById("theme-toggle");
+    if (btn) btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      var cur = root.getAttribute("data-theme");
+      var isDark = cur ? cur === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = isDark ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      localStorage.setItem(key, next);
+    });
+  })();
+</script>
+</body>
+</html>

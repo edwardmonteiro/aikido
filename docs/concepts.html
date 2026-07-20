@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concepts — aikido</title>
+<meta name="description" content="How aikido works: prompts as software artifacts, the transpiler pipeline, contracts, the control plane, and file-first design.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="nav">
+  <a class="brand" href="index.html"><span class="mark">合</span> aikido</a>
+  <div class="links">
+    <a href="getting-started.html">Getting started</a>
+    <a href="commands.html">Commands</a>
+    <a href="concepts.html" class="active">Concepts</a>
+    <a href="https://github.com/edwardmonteiro/aikido">GitHub</a>
+    <a href="#" id="theme-toggle" title="Toggle theme">◐</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <h1>Concepts</h1>
+  <p class="lead">aikido borrows the discipline of software engineering — modularity, contracts, build-time validation — and applies it to AI prompts and operational knowledge.</p>
+
+  <section>
+    <h2>Prompts as software artifacts</h2>
+    <p>A good system prompt isn't a paragraph you paste into a chat box. It's assembled from reusable parts: who you are (the control plane), what happened recently (weekly cadence), what you know (domain knowledge), and what "done" means (a contract). aikido keeps each of those as its own file and <em>compiles</em> them together.</p>
+    <p>The payoff is the same as with source code: you can diff a change, review it, roll it back, and reason about why an agent produced what it did — because its entire input is a flat file on disk.</p>
+  </section>
+
+  <section>
+    <h2>The transpiler pipeline</h2>
+    <p><code>AikidoTranspiler.build()</code> runs three stages. Each is a gate: a failure stops the build and reports the stage and the specific errors, so you never ship a half-resolved prompt.</p>
+    <div class="pipeline">
+      <div class="stage">
+        <div class="n">1</div>
+        <div>
+          <h4>pre&#95;transpile — static checks</h4>
+          <p>Parse the template's Jinja2 AST. Confirm every constant <code>{% include %}</code> and <code>{% extends %}</code> target exists on disk, and that every output id declared in the contract's definition of done is actually referenced in the template. Dynamic includes (built from expressions) are skipped here and resolved at render time.</p>
+        </div>
+      </div>
+      <div class="stage">
+        <div class="n">2</div>
+        <div>
+          <h4>transpile — render</h4>
+          <p>Render the template with Jinja2 (<code>trim_blocks</code> + <code>lstrip_blocks</code>) against the loaded contract and your variables — <code>week</code>, <code>focus_area</code>, and anything else you pass. A custom <code>load_json</code> filter/global lets templates read contracts directly.</p>
+        </div>
+      </div>
+      <div class="stage">
+        <div class="n">3</div>
+        <div>
+          <h4>post&#95;transpile — constraint checks</h4>
+          <p>Run the rendered output against the contract's constraints — <code>word_count &lt; N</code> limits and bans on generic filler (<code>"leverage"</code>, <code>"synergy"</code>, …). On success the artifact is written to <code>06_dist/{agent}_{week}.md</code>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Contracts</h2>
+    <p>A contract is a JSON file in <code>04_contracts/</code> that pins down what an agent must produce. It has three parts:</p>
+    <ul>
+      <li><strong>objective</strong> — the job, the user, the context, and the "success feeling."</li>
+      <li><strong>definition_of_done</strong> — the required <code>outputs</code> (each with a format and pass/fail criteria) and the <code>constraints</code> the whole output must satisfy.</li>
+      <li><strong>validation</strong> — automated <code>auto_checks</code> and open <code>human_review</code> questions.</li>
+    </ul>
+    <pre><code>{
+  "job_id": "weekly-founder-review",
+  "objective": { "job": "...", "user": "Founder/CEO", ... },
+  "definition_of_done": {
+    "outputs": [
+      { "id": "next_week_priorities", "format": "numbered_list",
+        "count": "3", "criteria": "Each must reference a signal or blocker" }
+    ],
+    "constraints": ["Total output &lt; 500 words", "No generic advice"]
+  },
+  "validation": {
+    "auto_checks": ["word_count &lt; 500", "all_output_ids_present"],
+    "human_review": ["Does this feel like me?"]
+  }
+}</code></pre>
+    <p>Because the transpiler checks the template against the contract at build time, a contract and its template can't silently drift apart.</p>
+  </section>
+
+  <section>
+    <h2>The control plane</h2>
+    <p><code>00_control_plane/</code> holds the stable facts that every agent should inherit — <code>founder_identity.md</code>, <code>tone_voice.md</code>, and <code>safety_guardrails.md</code>. Templates include them once, so a change to your voice or your guardrails propagates to every agent on the next build.</p>
+  </section>
+
+  <section>
+    <h2>Templates &amp; inheritance</h2>
+    <p>Agents live in <code>05_agents/</code> as <code>*.prompt.md</code> files. A shared <code>_base.prompt.md</code> lays out the skeleton — identity, job, definition of done, constraints, validation — and defines empty <code>context</code> and <code>task</code> blocks. Concrete agents <code>{% extends %}</code> the base and fill those blocks, pulling in the right week's cadence and, optionally, focus-area domain knowledge.</p>
+    <div class="note"><strong>Gotcha worth knowing.</strong> In Jinja, <code>output.values</code> resolves to a dict's built-in <code>.values()</code> method rather than a missing key — so aikido's base template uses <code>output.get('values')</code>. It's the kind of edge case build-time validation is designed to catch.</div>
+  </section>
+
+  <section>
+    <h2>File-first, always</h2>
+    <p>There is no database and no server. Your knowledge base, contracts, config (<code>.aikido/config.yaml</code>), and built artifacts are all plain text. That makes aikido trivially version-controllable, reviewable in a pull request, and portable — and it's why this documentation site is itself just hand-authored static files.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Directory</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>00_control_plane/</code></td><td>Identity, tone, safety guardrails</td></tr>
+        <tr><td><code>01_weekly_cadence/</code></td><td>Daily logs + aggregated weekly rollups</td></tr>
+        <tr><td><code>02_domain_knowledge/</code></td><td>Product &amp; go-to-market knowledge</td></tr>
+        <tr><td><code>03_support_tickets/</code></td><td>Support themes</td></tr>
+        <tr><td><code>04_contracts/</code></td><td>JSON contracts</td></tr>
+        <tr><td><code>05_agents/</code></td><td>Jinja2 prompt templates</td></tr>
+        <tr><td><code>06_dist/</code></td><td>Built flat-Markdown artifacts</td></tr>
+        <tr><td><code>07_archive/</code></td><td>Compressed old weeks</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>aikido — AI-native knowledge &amp; decision operations. MIT licensed.</span>
+    <span><a href="https://github.com/edwardmonteiro/aikido">github.com/edwardmonteiro/aikido</a></span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var key = "aikido-theme";
+    var root = document.documentElement;
+    var saved = localStorage.getItem(key);
+    if (saved) root.setAttribute("data-theme", saved);
+    var btn = document.getElementById("theme-toggle");
+    if (btn) btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      var cur = root.getAttribute("data-theme");
+      var isDark = cur ? cur === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = isDark ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      localStorage.setItem(key, next);
+    });
+  })();
+</script>
+</body>
+</html>
