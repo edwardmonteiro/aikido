@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily capture — aikido</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .field { display: block; margin: 0 0 1rem; }
+  .field span { display: block; font-size: 0.85rem; font-weight: 600; color: var(--muted); margin-bottom: 0.3rem; }
+  .field input, .field select, .field textarea {
+    width: 100%; font: inherit; color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 0.6rem 0.7rem;
+  }
+  .field textarea { min-height: 3.2rem; resize: vertical; }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
+  .actions { display: flex; gap: 0.6rem; flex-wrap: wrap; margin: 1.25rem 0 0.5rem; }
+  .actions .btn { cursor: pointer; font: inherit; }
+  #status { min-height: 1.3em; color: var(--accent); }
+  #preview { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="brand" href="daily.html"><span class="mark">合</span> aikido</a>
+  <div class="links">
+    <a href="daily.html" class="active">Daily</a>
+    <a href="index.html">Docs</a>
+    <a href="#" id="theme-toggle" title="Toggle theme">◐</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <section>
+    <h1>Daily capture</h1>
+    <p class="muted small">The phone version of <code>aikido daily</code>. Fill it in, then save or share the Markdown into your knowledge base. Your draft is kept until you clear it.</p>
+
+    <form id="daily" autocomplete="off" onsubmit="return false">
+      <label class="field"><span>Date</span><input type="date" name="date"></label>
+      <label class="field"><span>Day type</span><select name="type"></select></label>
+      <label class="field"><span>Shipped today</span><textarea name="ships" placeholder="none"></textarea></label>
+      <label class="field"><span>Blockers</span><textarea name="blockers" placeholder="none"></textarea></label>
+      <label class="field"><span>Customer moment</span><textarea name="customer" placeholder="none"></textarea></label>
+      <label class="field"><span>One-sentence takeaway (required)</span><textarea name="takeaway"></textarea></label>
+      <label class="field"><span>People involved</span><input type="text" name="people" placeholder="solo"></label>
+    </form>
+
+    <div class="actions">
+      <button type="button" class="btn primary" id="save">Save .md</button>
+      <button type="button" class="btn" id="share">Share</button>
+      <button type="button" class="btn" id="reset">Clear</button>
+    </div>
+    <div id="status" class="small"></div>
+  </section>
+
+  <section>
+    <h2>Preview</h2>
+    <p class="muted small">Goes to <code id="path"></code> in your aikido repo.</p>
+    <pre><code id="preview"></code></pre>
+  </section>
+</main>
+
+<script>
+  (function () {
+    var key = "aikido-theme";
+    var root = document.documentElement;
+    var saved = null;
+    try { saved = localStorage.getItem(key); } catch (e) {}
+    if (saved) root.setAttribute("data-theme", saved);
+    var btn = document.getElementById("theme-toggle");
+    if (btn) btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      var cur = root.getAttribute("data-theme");
+      var isDark = cur ? cur === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = isDark ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem(key, next); } catch (e) {}
+    });
+  })();
+</script>
+<script src="daily.js"></script>
+</body>
+</html>
