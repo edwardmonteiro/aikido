@@ -24,6 +24,8 @@ TAG_KEYWORDS: Dict[str, List[str]] = {
     "runway": ["runway", "burn"],
 }
 
+DAY_TYPES: List[str] = ["meeting-heavy", "shipping", "firefighting", "planning", "research"]
+
 
 def week_of(date: str) -> str:
     """Return the ISO week label (``YYYY-Www``) for a ``YYYY-MM-DD`` date."""
@@ -76,7 +78,7 @@ class DailyCapture:
             "date": date,
             "type": Prompt.ask(
                 "Day type",
-                choices=["meeting-heavy", "shipping", "firefighting", "planning", "research"],
+                choices=DAY_TYPES,
                 default="shipping",
             ),
             "ships": Prompt.ask("Shipped today (or 'none')", default="none"),
