@@ -86,6 +86,7 @@ contract validated.
 | `aikido dashboard` | Knowledge-system health dashboard |
 | `aikido validate` | Check broken includes, undefined variables, contract mismatches, stale files |
 | `aikido config` | Manage `.aikido/config.yaml` |
+| `aikido village` | Open the Agent Village — a local RPG town where your AI agents live and work |
 
 ## The transpiler
 
@@ -98,6 +99,62 @@ contract validated.
    (word counts, no generic filler).
 
 On success the artifact is written to `06_dist/{agent}_{week}.md`.
+
+## Agent Village
+
+```bash
+aikido village            # opens http://127.0.0.1:8765/
+```
+
+A top-down 16-bit town that runs locally in your browser. Ten buildings sit
+around a town square with a fountain. Your **Chief of Staff** (Matt by default)
+follows you around, takes to-dos from the toolbar and routes each one to one of
+seven **directors**:
+
+| Director | House | Domain |
+| --- | --- | --- |
+| Iris | Inbox House | email and calendar (drafts only) |
+| Cole | Content Studio | video and social scripts (never publishes) |
+| Penny | Money House | budgets, cash flow, treasury and covenant checks (never moves money) |
+| Reed | Research Library | research reports |
+| Tess | Travel Lodge | itineraries (never books) |
+| Ezra | Code Workshop | specs, scripts, reviews |
+| Kai | Knowledge Archive | this aikido knowledge base |
+
+- **No API keys.** Every agent thinks through your local `claude` CLI in
+  headless mode, on your Claude subscription. The Chief of Staff and directors
+  run Opus, directors can escalate a complex edge-case to an advisor model, and
+  hired interns run Sonnet. Without the CLI the village runs offline with
+  placeholder replies.
+- **Memory.** Each agent has `village/agents/<id>/identity.md` and a persistent
+  `notes.md`. When two interns bump into each other in town, they swap status
+  and both write it down.
+- **Deliverables.** Finished work is saved as Markdown and PDF and lands in the
+  **Review** queue. Nothing is acted on until you approve it.
+- **Controls.** Arrow keys or WASD to walk, Shift to run, walk into a door to go
+  inside. `T` talks to whoever is next to you, double-tap `M` talks to the
+  Chief of Staff from anywhere ("call Penny" makes Penny walk over), **Meeting**
+  gathers every director at the Town Hall table, and `G` shows the navigation
+  mesh.
+- **Guardrails, enforced in code.** Each agent call is limited to file tools in
+  the agent's own folder (`--tools`, `--allowedTools`,
+  `--permission-mode dontAsk`). Connector tools whose names suggest sending,
+  posting, paying, trading, sharing or deleting are never granted. Interns only
+  spawn after you interview and approve them (`approved_by_human`). The server
+  binds to `127.0.0.1` and refuses cross-origin requests.
+
+To give Iris your mailbox, add the draft-only connector tool names to
+`village/village.json`:
+
+```json
+{ "connector_tools": { "inbox": ["mcp__Gmail__create_draft", "mcp__Gmail__search_threads"] } }
+```
+
+Everything is drawn procedurally on a canvas, so there are no image assets and
+no image-generation credits to spend.
+
+![The village: Penny's interns in yellow vests](docs/img/village-town.png)
+![The review queue](docs/img/village-review.png)
 
 ## Development
 

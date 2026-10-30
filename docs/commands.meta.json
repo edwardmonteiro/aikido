@@ -1,7 +1,8 @@
 {
   "order": [
     "init", "daily", "weekly", "build_agent", "update", "sync",
-    "archive", "onboard", "investor", "dashboard", "validate", "config"
+    "archive", "onboard", "investor", "dashboard", "validate", "config",
+    "village"
   ],
   "commands": {
     "init": {
@@ -150,6 +151,22 @@
         "--value": "Provide with a key to set it",
         "--list-all": "Print the whole config as a table"
       }
+    },
+    "village": {
+      "summary": "Run the Agent Village — a local 16-bit RPG town where your AI agents live and work. Agents think through your local `claude` CLI (subscription, no API key); emails stay drafts, nothing is spent or published, and every deliverable waits in your review queue.",
+      "examples": [
+        "aikido village",
+        "aikido village --port 9000 --chief Ana",
+        "aikido village --offline --no-open-browser"
+      ],
+      "params": {
+        "--port": "Local port (the server binds to 127.0.0.1 only)",
+        "--root": "Where agent folders, notes and deliverables live",
+        "--offline": "Skip the `claude` CLI and use placeholder replies",
+        "--chief": "Your Chief of Staff's name",
+        "--open-browser": "Open the village in your browser on start"
+      },
+      "defaults": { "--root": "`<project>/village`, or `./village` outside a project" }
     }
   }
 }
