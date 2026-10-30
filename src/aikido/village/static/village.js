@@ -60,7 +60,10 @@
     return `rgb(${r},${g},${b})`;
   }
 
+  // A page can supply its own backend (same routes, same shapes) instead of the
+  // local server, e.g. a hosted demo: window.VILLAGE_BACKEND(path, body) -> data.
   async function api(path, body) {
+    if (window.VILLAGE_BACKEND) return window.VILLAGE_BACKEND(path, body);
     const res = await fetch(path, body === undefined ? {} : {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
@@ -375,6 +378,18 @@
     }
   });
   addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+
+  // Touch controls: the D-pad holds arrow keys down; action buttons fire T / MM.
+  document.querySelectorAll("#touch [data-key]").forEach((b) => {
+    const k = b.dataset.key;
+    const on = (e) => { e.preventDefault(); keys.add(k); b.classList.add("down"); };
+    const off = (e) => { e.preventDefault(); keys.delete(k); b.classList.remove("down"); };
+    b.addEventListener("pointerdown", on);
+    for (const ev of ["pointerup", "pointercancel", "pointerleave"]) b.addEventListener(ev, off);
+  });
+  $("touch-run")?.addEventListener("click", (e) => { e.currentTarget.classList.toggle("down"); keys[e.currentTarget.classList.contains("down") ? "add" : "delete"]("shift"); });
+  $("touch-talk")?.addEventListener("click", () => { const n = nearest(); if (n) openChat(n); else toast("Walk up to someone first."); });
+  $("touch-chief")?.addEventListener("click", () => { summonChief(); openChat(chief()); });
   addEventListener("blur", () => keys.clear());
 
   // Where a person is drawn in the current scene (interiors have their own coordinates).
@@ -600,7 +615,7 @@
   }
 
   function renderTown(now) {
-    scale = Math.max(2, Math.round(Math.min(innerWidth / (26 * T), innerHeight / (16 * T))));
+    scale = innerWidth < 600 ? 1.5 : Math.max(2, Math.round(Math.min(innerWidth / (26 * T), innerHeight / (16 * T))));
     const vw = cv.width / scale, vh = cv.height / scale;
     const camX = clamp(player.x - vw / 2, 0, Math.max(0, W * T - vw));
     const camY = clamp(player.y - vh / 2, -40, Math.max(0, H * T - vh));
@@ -774,7 +789,7 @@
   }
 
   // ------------------------------------------------------------------ UI: chat
-  function closeAll() { for (const id of ["chat", "review", "hire", "help"]) $(id).classList.add("hidden"); chatWith = null; }
+  function closeAll() { for (const id of ["chat", "review", "hire", "help", "reader"]) $(id).classList.add("hidden"); chatWith = null; }
   document.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => { $(b.dataset.close).classList.add("hidden"); if (b.dataset.close === "chat") chatWith = null; }));
   const logs = {};
   function openChat(p) {
@@ -882,7 +897,8 @@
       const el = document.createElement("div"); el.className = "item";
       el.innerHTML = `<div><span class="status ${it.status}">${it.status.replace("_", " ")}</span> <b></b></div>
         <div class="muted"></div>
-        <div><a target="_blank" href="/files/${encodeURI(it.pdf)}">PDF</a><a target="_blank" href="/files/${encodeURI(it.md)}">Markdown</a></div>`;
+        <div class="row"><button class="read">Read</button>${window.VILLAGE_BACKEND ? "" : `<a target="_blank" href="/files/${encodeURI(it.pdf)}">PDF</a><a target="_blank" href="/files/${encodeURI(it.md)}">Markdown</a>`}</div>`;
+      el.querySelector(".read").onclick = () => openReader(it);
       el.querySelector("b").textContent = it.title;
       el.querySelector(".muted").textContent = `${who ? who.name : it.agent} · ${it.created} · “${it.task.slice(0, 80)}”`;
       if (it.status === "pending_review") {
@@ -896,6 +912,15 @@
       }
       list.appendChild(el);
     }
+  }
+
+  async function openReader(it) {
+    $("reader-title").textContent = it.title;
+    $("reader-body").textContent = "Loading…";
+    $("reader").classList.remove("hidden");
+    try {
+      $("reader-body").textContent = it.text ?? await (await fetch(`/files/${encodeURI(it.md)}`)).text();
+    } catch (err) { $("reader-body").textContent = `Could not load the deliverable: ${err.message}`; }
   }
 
   // ------------------------------------------------------------------ UI: hiring
@@ -919,7 +944,8 @@
       el.querySelector(".muted").textContent = `Interview at Town Hall: “${c.pitch}”`;
       const yes = document.createElement("button"); yes.className = "good"; yes.textContent = "Approve hire";
       yes.onclick = async () => {
-        if (!confirm(`Hire ${c.name} as an intern for ${$("hire-director").selectedOptions[0].textContent}?`)) return;
+        // Two-step approval in the page itself (embedded viewers suppress confirm()).
+        if (!yes.dataset.armed) { yes.dataset.armed = "1"; yes.textContent = `Confirm: hire ${c.name}`; return; }
         try {
           await api("/api/hire", { director, name: c.name, approved_by_human: true });
           toast(`${c.name} hired — they're walking over from the Recruiting Office in a yellow vest.`);
@@ -936,7 +962,7 @@
   // ------------------------------------------------------------------ boot
   async function refresh() {
     roster = await api("/api/state");
-    $("brain").textContent = roster.brain === "claude" ? "Claude CLI" : "offline";
+    $("brain").textContent = roster.brain_label || (roster.brain === "claude" ? "Claude CLI" : "offline");
     $("brain").className = "badge " + roster.brain;
     $("brain").title = roster.brain === "claude" ? "Agents think via your local `claude` CLI (subscription, no API key)" : "No `claude` CLI found — placeholder replies";
     $("review-count").textContent = roster.review.filter((r) => r.status === "pending_review").length;

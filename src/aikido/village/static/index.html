@@ -29,6 +29,25 @@
   </header>
 
   <div id="hint"></div>
+
+  <div id="touch" aria-label="Touch controls">
+    <div class="dpad">
+      <button data-key="arrowup" class="up" aria-label="Up">▲</button>
+      <button data-key="arrowleft" class="left" aria-label="Left">◀</button>
+      <button data-key="arrowright" class="right" aria-label="Right">▶</button>
+      <button data-key="arrowdown" class="down-btn" aria-label="Down">▼</button>
+    </div>
+    <div class="acts">
+      <button id="touch-talk">Talk</button>
+      <button id="touch-chief">Chief</button>
+      <button id="touch-run">Run</button>
+    </div>
+  </div>
+
+  <section id="reader" class="panel side hidden">
+    <div class="panel-head"><strong id="reader-title"></strong><button class="close" data-close="reader">×</button></div>
+    <pre id="reader-body"></pre>
+  </section>
   <div id="toasts"></div>
 
   <section id="chat" class="panel hidden" aria-live="polite">

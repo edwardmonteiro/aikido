@@ -71,4 +71,32 @@ kbd { background: #3b3452; border: 1px solid #6b5e8a; border-radius: 3px; paddin
 h4 { margin: 12px 0 4px; }
 ul { padding-left: 18px; margin: 4px 0; }
 li { margin: 4px 0; font-size: 14px; }
-@media (max-width: 640px) { .brand { display: none; } }
+@media (max-width: 640px) {
+  .brand, #agenda { display: none; }
+  #toolbar { gap: 6px; padding: 6px 8px; }
+  #toolbar input, #toolbar button { font-size: 13px; padding: 5px 7px; }
+  #todo-form { flex-basis: 100%; }
+  .actions { width: 100%; justify-content: space-between; }
+  .actions button { flex: 1; }
+}
+
+#reader { z-index: 8; }
+#reader-body { white-space: pre-wrap; font: 13px/1.5 ui-monospace, Menlo, monospace; margin: 0; }
+
+#touch { display: none; }
+@media (pointer: coarse) {
+  #touch {
+    display: flex; position: fixed; z-index: 4; left: 0; right: 0; bottom: 0; justify-content: space-between;
+    align-items: flex-end; pointer-events: none;
+    padding: 0 max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  }
+  #touch button { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; opacity: .85; }
+  #touch button.down { background: var(--accent); color: #222; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px; }
+  .dpad button { font-size: 18px; padding: 0; }
+  .dpad .up { grid-area: 1 / 2; } .dpad .left { grid-area: 2 / 1; } .dpad .right { grid-area: 2 / 3; } .dpad .down-btn { grid-area: 3 / 2; }
+  .acts { display: flex; flex-direction: column; gap: 8px; }
+  .acts button { min-width: 72px; min-height: 44px; }
+  #hint { display: none; }
+  #toasts { bottom: auto; top: 110px; }
+}
