@@ -1,0 +1,98 @@
+name: Caloria Bebê
+
+on:
+  push:
+    branches: [main]
+    paths: ["caloria-bebe/**", ".github/workflows/caloria-bebe.yml"]
+  pull_request:
+    paths: ["caloria-bebe/**", ".github/workflows/caloria-bebe.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: caloria-bebe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: caloria-bebe/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: caloria-bebe/backend/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+      - name: Frontend syntax check
+        run: node --check ../frontend/app.js
+      - name: Docker image builds
+        run: docker build -q -t caloria-api .
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+      APP_DIR: /opt/caloria-bebe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy secrets
+        id: gate
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ]; then
+            echo "::warning::VPS_HOST / VPS_USER / VPS_SSH_KEY secrets not set — skipping deploy."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure SSH
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          if [ -n "${{ secrets.VPS_KNOWN_HOSTS }}" ]; then
+            printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" > ~/.ssh/known_hosts
+          fi
+
+      - name: Sync files
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          rsync -az --delete -e "ssh -p $VPS_PORT" \
+            --exclude '.env' --exclude 'backups/' --exclude 'backend/tests/' --exclude '__pycache__/' \
+            caloria-bebe/ "$VPS_USER@$VPS_HOST:$APP_DIR/"
+
+      - name: Build and restart
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cd $APP_DIR && \
+            docker compose up -d --build --remove-orphans && \
+            docker image prune -f >/dev/null"
+
+      - name: Smoke test
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          for i in $(seq 1 20); do
+            if ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+                 "cd $APP_DIR && docker compose exec -T api python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""; then
+              echo "API healthy"; exit 0
+            fi
+            sleep 3
+          done
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cd $APP_DIR && docker compose logs --tail 80 api"
+          exit 1
