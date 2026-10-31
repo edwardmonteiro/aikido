@@ -200,6 +200,50 @@ def validate(path: Optional[str] = None, fix: bool = False) -> None:
 
 
 @app.command()
+def village(
+    port: int = 8765,
+    root: Optional[str] = None,
+    offline: bool = False,
+    chief: str = "Matt",
+    open_browser: bool = True,
+) -> None:
+    """Run the Agent Village: a local RPG town where your AI agents live and work.
+
+    Agents think through your local `claude` CLI (your subscription, no API key).
+    Emails stay drafts, nothing is spent or published, and every deliverable
+    waits in your review queue.
+    """
+    import webbrowser
+
+    from aikido.village.brain import ClaudeBrain, OfflineBrain
+    from aikido.village.server import serve
+    from aikido.village.town import Town
+
+    project = cfg.find_project_root()
+    village_root = Path(root) if root else (project or Path.cwd()) / "village"
+    if not offline and ClaudeBrain.available():
+        brain = ClaudeBrain(extra_dirs=[project] if project else [])
+    else:
+        if not offline:
+            console.print("[yellow]`claude` CLI not found — running the village offline.[/yellow]")
+        brain = OfflineBrain()
+
+    town = Town(village_root, brain, chief_name=chief)
+    httpd = serve(town, port=port)
+    url = f"http://127.0.0.1:{port}/"
+    console.print(f"[green]Agent Village is open[/green] at {url}  (brain: {brain.name}, data: {village_root})")
+    console.print("Ctrl+C to close the village.")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        console.print("\nVillage closed.")
+    finally:
+        httpd.server_close()
+
+
+@app.command()
 def config(
     key: Optional[str] = None,
     value: Optional[str] = None,
