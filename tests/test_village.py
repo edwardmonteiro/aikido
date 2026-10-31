@@ -47,6 +47,14 @@ def test_unsafe_tools_are_never_granted():
     assert not {"mcp__Gmail__send_message", "Bash", "mcp__Drive__share_file"} & set(allowed)
 
 
+def test_default_connectors_are_read_or_draft_only():
+    by_id = {a.id: a for a in roster.default_roster()}
+    inbox, eng = by_id["inbox"].allowed_tools(), by_id["engineering"].allowed_tools()
+    assert set(roster.GMAIL_TOOLS) <= set(inbox) and set(roster.GITHUB_TOOLS) <= set(eng)
+    assert by_id["inbox"].connectors == ["Gmail"] and by_id["engineering"].connectors == ["GitHub"]
+    assert roster.route_task("Summarise the open issues in our GitHub repo", list(by_id.values())).id == "engineering"
+
+
 def test_claude_command_is_sandboxed(tmp_path):
     agent = roster.default_roster()[1]
     cmd = ClaudeBrain().command(agent, "sys")

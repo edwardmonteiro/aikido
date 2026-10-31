@@ -2,29 +2,31 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Agent Village</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=Silkscreen&display=swap">
   <link rel="stylesheet" href="village.css">
 </head>
 <body>
   <canvas id="world"></canvas>
 
   <header id="toolbar">
-    <div class="brand">合 Agent Village <span id="brain" class="badge">…</span></div>
+    <div class="brand"><span class="logo">合</span> Agent Village <span id="brain" class="badge">…</span></div>
     <form id="todo-form" autocomplete="off">
-      <input id="todo" placeholder="To-do for your Chief of Staff… e.g. plan a 3-day Lisbon trip" maxlength="500">
-      <button type="submit">Send</button>
+      <input id="todo" placeholder="New to-do for your Chief of Staff" maxlength="500" aria-label="New to-do">
+      <button type="submit" class="primary">Send</button>
     </form>
     <div class="actions">
-      <select id="agenda" title="Meeting agenda">
+      <select id="agenda" title="Meeting agenda" aria-label="Meeting agenda">
         <option>morning briefing</option>
         <option>end-of-day debrief</option>
         <option>quarterly review</option>
       </select>
       <button id="meeting-btn" title="Gather all directors at Town Hall">Meeting</button>
-      <button id="review-btn">Review <span id="review-count" class="count">0</span></button>
+      <button id="review-btn">Review <span id="review-count" class="count" hidden>0</span></button>
       <button id="hire-btn">Hire</button>
-      <button id="help-btn" title="Controls">?</button>
+      <button id="help-btn" title="Controls and guardrails" aria-label="Help">?</button>
     </div>
   </header>
 
@@ -45,40 +47,40 @@
   </div>
 
   <section id="reader" class="panel side hidden">
-    <div class="panel-head"><strong id="reader-title"></strong><button class="close" data-close="reader">×</button></div>
+    <div class="panel-head"><strong id="reader-title"></strong><button class="close" data-close="reader" aria-label="Close">×</button></div>
     <pre id="reader-body"></pre>
   </section>
   <div id="toasts"></div>
 
   <section id="chat" class="panel hidden" aria-live="polite">
     <div class="panel-head">
-      <canvas id="portrait" width="24" height="24"></canvas>
+      <canvas id="portrait" width="36" height="36"></canvas>
       <div><strong id="chat-name"></strong><div id="chat-title" class="muted"></div></div>
-      <button class="close" data-close="chat">×</button>
+      <button class="close" data-close="chat" aria-label="Close">×</button>
     </div>
     <div id="chat-log"></div>
     <form id="chat-form" autocomplete="off">
-      <input id="chat-input" placeholder="Say something…" maxlength="2000">
-      <button type="submit">Send</button>
+      <input id="chat-input" placeholder="Say something…" maxlength="2000" aria-label="Message">
+      <button type="submit" class="primary">Send</button>
     </form>
   </section>
 
   <section id="review" class="panel side hidden">
-    <div class="panel-head"><strong>Review queue</strong><button class="close" data-close="review">×</button></div>
+    <div class="panel-head"><strong>Review queue</strong><button class="close" data-close="review" aria-label="Close">×</button></div>
     <p class="muted">Nothing leaves the village until you approve it.</p>
     <div id="review-list"></div>
   </section>
 
   <section id="hire" class="panel side hidden">
-    <div class="panel-head"><strong>Hiring pipeline</strong><button class="close" data-close="hire">×</button></div>
-    <p class="muted">Your Chief of Staff sources candidates; you interview and approve. No intern spawns without your yes.</p>
-    <label>Director needing help <select id="hire-director"></select></label>
-    <button id="source-btn">Source candidates</button>
+    <div class="panel-head"><strong>Hiring</strong><button class="close" data-close="hire" aria-label="Close">×</button></div>
+    <p class="muted">Your Chief of Staff finds candidates. You interview them and approve. No intern is hired without your yes.</p>
+    <label>Director who needs help <select id="hire-director"></select></label>
+    <button id="source-btn">Find candidates</button>
     <div id="candidates"></div>
   </section>
 
   <section id="help" class="panel side hidden">
-    <div class="panel-head"><strong>How the village works</strong><button class="close" data-close="help">×</button></div>
+    <div class="panel-head"><strong>How the village works</strong><button class="close" data-close="help" aria-label="Close">×</button></div>
     <ul>
       <li><kbd>←↑↓→</kbd> or <kbd>WASD</kbd> walk · hold <kbd>Shift</kbd> to run</li>
       <li>Walk into a door to go inside · walk out the bottom to leave</li>
@@ -86,9 +88,11 @@
       <li><kbd>M</kbd><kbd>M</kbd> (double-tap) talk to your Chief of Staff from anywhere</li>
       <li>Ask the Chief of Staff to <em>“call Penny”</em> and that director walks over</li>
       <li><b>Meeting</b> gathers every director at the Town Hall table</li>
-      <li><kbd>G</kbd> toggle the navigation mesh (green = walkable)</li>
+      <li><kbd>G</kbd> show the walkable map (green = walkable)</li>
       <li><kbd>Esc</kbd> close panels</li>
     </ul>
+    <h4>Connectors</h4>
+    <ul id="connectors"><li>Iris (Inbox) can use Gmail. Ezra (Code) can use GitHub.</li></ul>
     <h4>Guardrails</h4>
     <ul id="guardrails"></ul>
   </section>

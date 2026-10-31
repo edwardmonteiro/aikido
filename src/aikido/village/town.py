@@ -114,6 +114,10 @@ class Town:
             "agents": [a.to_dict() for a in self.agents],
             "houses": [h.to_dict() for h in roster.HOUSES],
             "review": self._load_json("review.json", []),
+            "connectors": [
+                {"name": "Gmail", "status": "Iris searches, reads and drafts through your claude CLI's Gmail connector"},
+                {"name": "GitHub", "status": "Ezra reads repos, issues and PRs through your claude CLI's GitHub MCP server"},
+            ],
             "guardrails": [
                 "Emails are always saved as drafts — never sent.",
                 "No spending money or credits without your approval.",

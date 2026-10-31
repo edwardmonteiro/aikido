@@ -143,18 +143,27 @@ seven **directors**:
   spawn after you interview and approve them (`approved_by_human`). The server
   binds to `127.0.0.1` and refuses cross-origin requests.
 
-To give Iris your mailbox, add the draft-only connector tool names to
-`village/village.json`:
+**Connectors.** Iris (Inbox) can search and read Gmail and save drafts. Ezra
+(Code) can read GitHub repositories, issues, pull requests and commits. By default
+they use the tool names the `claude` CLI gives a claude.ai Gmail connector
+(`mcp__claude_ai_Gmail__*`) and a GitHub MCP server (`mcp__github__*`). Point them
+at other names in `village/village.json`:
 
 ```json
 { "connector_tools": { "inbox": ["mcp__Gmail__create_draft", "mcp__Gmail__search_threads"] } }
 ```
 
-Everything is drawn procedurally on a canvas, so there are no image assets and
-no image-generation credits to spend.
+Tools whose names suggest sending, posting, paying, trading, sharing or deleting
+are dropped before they reach the CLI, whatever the config says.
 
-![The village: Penny's interns in yellow vests](docs/img/village-town.png)
-![The review queue](docs/img/village-review.png)
+Everything is drawn in code at true pixel size and scaled by whole device pixels,
+so the art stays crisp on any screen. There are no image assets and no
+image-generation credits to spend. The village has touch controls on phones and
+a day/night cycle that follows your clock (try `?hour=21`).
+
+![The village by day](docs/img/village-town.png)
+![Penny's office in the Money House](docs/img/village-interior.png)
+![The town square at night](docs/img/village-night.png)
 
 ## Development
 

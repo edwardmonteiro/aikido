@@ -52,6 +52,7 @@ class Agent:
     tools: List[str] = field(default_factory=list)
     reports_to: Optional[str] = None
     palette: Dict[str, str] = field(default_factory=dict)
+    connectors: List[str] = field(default_factory=list)
     advisor: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -87,7 +88,28 @@ HOUSES: List[House] = [
 ]
 
 
-def _director(id, name, title, house, domain, keywords, tools, palette) -> Agent:
+# Connector tools as the `claude` CLI names them: claude.ai connectors appear as
+# `mcp__claude_ai_<Name>__<tool>`, a locally added GitHub MCP server as
+# `mcp__github__<tool>`. Read and draft only; sending is never on the list.
+GMAIL_TOOLS = [
+    "mcp__claude_ai_Gmail__search_threads",
+    "mcp__claude_ai_Gmail__get_thread",
+    "mcp__claude_ai_Gmail__list_drafts",
+    "mcp__claude_ai_Gmail__create_draft",
+]
+GITHUB_TOOLS = [
+    "mcp__github__list_issues",
+    "mcp__github__issue_read",
+    "mcp__github__list_pull_requests",
+    "mcp__github__pull_request_read",
+    "mcp__github__get_file_contents",
+    "mcp__github__list_commits",
+    "mcp__github__search_repositories",
+    "mcp__github__search_code",
+]
+
+
+def _director(id, name, title, house, domain, keywords, tools, palette, connectors=None) -> Agent:
     return Agent(
         id=id,
         name=name,
@@ -101,6 +123,7 @@ def _director(id, name, title, house, domain, keywords, tools, palette) -> Agent
         reports_to="chief_of_staff",
         palette=palette,
         advisor=ADVISOR,
+        connectors=connectors or [],
     )
 
 
@@ -119,11 +142,12 @@ def default_roster(chief_name: str = "Matt") -> List[Agent]:
     directors = [
         _director(
             "inbox", "Iris", "Inbox Director", "inbox",
-            "Email and calendar: triage, summarise threads, draft replies, propose meeting times.",
-            ["email", "inbox", "gmail", "reply", "calendar", "meeting", "schedule", "invite"],
-            # Draft-only connectors; wire real tool names in village.json.
-            [],
+            "Email and calendar: triage, summarise threads, draft replies, propose meeting times. "
+            "Can search and read Gmail and save drafts; never sends.",
+            ["email", "inbox", "gmail", "reply", "calendar", "meeting", "schedule", "invite", "mail"],
+            GMAIL_TOOLS,
             {"shirt": "#c0504d", "pants": "#3b2a2a", "hair": "#1f1a17", "skin": "#c68e6a"},
+            ["Gmail"],
         ),
         _director(
             "content", "Cole", "Content Director", "studio",
@@ -159,10 +183,13 @@ def default_roster(chief_name: str = "Matt") -> List[Agent]:
         ),
         _director(
             "engineering", "Ezra", "Engineering Director", "workshop",
-            "Code and automation: specs, scripts, code reviews, technical plans.",
-            ["code", "bug", "script", "deploy", "github", "pr", "api", "automation", "build"],
-            [],
+            "Code and automation: specs, scripts, code reviews, technical plans. Can read GitHub "
+            "repositories, issues, pull requests and commits; never pushes, merges or comments.",
+            ["code", "bug", "script", "deploy", "github", "pr", "api", "automation", "build",
+             "repo", "issue", "issues", "commit", "commits"],
+            GITHUB_TOOLS,
             {"shirt": "#6c757d", "pants": "#212529", "hair": "#111111", "skin": "#d1a17a"},
+            ["GitHub"],
         ),
         _director(
             "knowledge", "Kai", "Knowledge Director", "archive",
