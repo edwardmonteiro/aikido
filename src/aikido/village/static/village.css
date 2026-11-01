@@ -99,6 +99,12 @@ h4 { margin: 14px 0 4px; font-family: var(--label); font-size: 12px; color: var(
 ul { padding-left: 18px; margin: 4px 0; }
 li { margin: 5px 0; font-size: 14px; }
 
+#minimap {
+  position: fixed; z-index: 4; right: 12px; top: 74px; width: 256px; height: 176px; image-rendering: pixelated;
+  border: 3px solid var(--frame); box-shadow: inset 0 0 0 2px var(--gold-dark), 0 4px 0 rgba(0,0,0,.35); background: var(--panel);
+}
+#minimap[hidden] { display: none; }
+#map-btn[aria-pressed="true"] { background: #a8742b; }
 #reader { z-index: 8; }
 #reader-body { white-space: pre-wrap; font: 14px/1.5 var(--ui); margin: 0; }
 
@@ -111,6 +117,7 @@ li { margin: 5px 0; font-size: 14px; }
   .actions button { flex: 1; white-space: nowrap; }
   .toast { font-size: 13px; padding: 7px 10px; }
   .panel.side { top: 96px; max-height: calc(100vh - 230px); }
+  #minimap { top: 100px; width: 192px; height: 132px; }
 }
 
 #touch { display: none; }

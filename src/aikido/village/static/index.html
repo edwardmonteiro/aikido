@@ -26,11 +26,13 @@
       <button id="meeting-btn" title="Gather all directors at Town Hall">Meeting</button>
       <button id="review-btn">Review <span id="review-count" class="count" hidden>0</span></button>
       <button id="hire-btn">Hire</button>
+      <button id="map-btn" aria-pressed="false">Map</button>
       <button id="help-btn" title="Controls and guardrails" aria-label="Help">?</button>
     </div>
   </header>
 
   <div id="hint"></div>
+  <canvas id="minimap" width="128" height="88" hidden aria-label="Town map"></canvas>
 
   <div id="touch" aria-label="Touch controls">
     <div class="dpad">

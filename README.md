@@ -159,11 +159,12 @@ are dropped before they reach the CLI, whatever the config says.
 Everything is drawn in code at true pixel size and scaled by whole device pixels,
 so the art stays crisp on any screen. There are no image assets and no
 image-generation credits to spend. The village has touch controls on phones and
-a day/night cycle that follows your clock (try `?hour=21`).
+a day/night cycle that follows your clock (try `?hour=21`), plus a pond with ducks,
+drifting cloud shadows, swaying trees, butterflies, fireflies and a minimap.
 
 ![The village by day](docs/img/village-town.png)
-![Penny's office in the Money House](docs/img/village-interior.png)
-![The town square at night](docs/img/village-night.png)
+![Tess in the Travel Lodge](docs/img/village-interior.png)
+![The pond at night](docs/img/village-night.png)
 
 ## Development
 

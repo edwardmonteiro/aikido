@@ -48,6 +48,8 @@
   };
   const PLAZA = { x: 22, y: 13, w: 21, h: 16 };
   const FOUNTAIN = { x: 32.5 * T, y: 21 * T, r: 2.2 * T };
+  const POND = { x: 21.5 * T, y: 37 * T, rx: 3.7 * T, ry: 2.5 * T };
+  const inPond = (px, py, grow = 0) => ((px - POND.x) / (POND.rx + grow)) ** 2 + ((py - POND.y) / (POND.ry + grow)) ** 2 < 1;
 
   const PLAYER_LOOK = { shirt: "#7a4fd0", pants: "#2c2a44", hair: "#3b2416", skin: "#d9a066", style: "short", hoodie: true };
   const STYLES = {
@@ -142,7 +144,7 @@
   const grid = new Uint8Array(W * H);
   const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 3 : grid[y * W + x]);
   const set = (x, y, v) => { if (x >= 0 && y >= 0 && x < W && y < H) grid[y * W + x] = v; };
-  const solid = (v) => v === 3 || v === 5 || v === 6 || v === 8 || v === 9;
+  const solid = (v) => v === 3 || v === 5 || v === 6 || v === 8 || v === 9 || v === 10;
   const doors = {};
   const under = new Uint8Array(W * H); // ground kind beneath props: 1 path, 2 plaza, else grass
   const props = [];          // lamps, benches, mailbox, signpost, flower beds
@@ -154,6 +156,7 @@
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++)
         if (Math.hypot((x + 0.5) * T - FOUNTAIN.x, (y + 0.5) * T - FOUNTAIN.y) < FOUNTAIN.r + 6) set(x, y, 6);
+        else if (inPond((x + 0.5) * T, (y + 0.5) * T, 6)) set(x, y, 10);
     for (const [id, b] of Object.entries(LAYOUT)) {
       for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) set(x, y, 3);
       const dx = b.x + Math.floor(b.w / 2), dy = b.y + b.h - 1;
@@ -163,7 +166,7 @@
     }
     // Paths: breadth-first from each door to the plaza, then widen to 2 tiles.
     for (const d of Object.values(doors)) {
-      const route = bfs({ x: d.x, y: d.y + 1 }, (x, y) => at(x, y) === 2, (v) => v === 3 || v === 6 || v === 4);
+      const route = bfs({ x: d.x, y: d.y + 1 }, (x, y) => at(x, y) === 2, (v) => v === 3 || v === 6 || v === 4 || v === 10);
       for (const p of route || []) if (at(p.x, p.y) === 0) set(p.x, p.y, 1);
       set(d.x, d.y + 1, 1);
     }
@@ -178,6 +181,22 @@
     for (const bx of [27, 36]) { set(bx, 25, 8); set(bx + 1, 25, 8); props.push({ kind: "bench", x: bx * T + 16, y: 25 * T + 13 }); }
     const ib = doors.inbox; set(ib.x + 2, ib.y + 1, 8); props.push({ kind: "mailbox", x: (ib.x + 2) * T + 8, y: (ib.y + 1) * T + 14 });
     set(31, 30, 8); props.push({ kind: "signpost", x: 31 * T + 8, y: 30 * T + 14 });
+    // Garden props by each house, only on free grass.
+    const yard = (id, kind, ox, oy) => {
+      const d = doors[id], x = d.x + ox, y = d.y + oy;
+      if (at(x, y) !== 0) return;
+      set(x, y, 8); props.push({ kind, x: x * T + 8, y: y * T + 14 });
+    };
+    yard("workshop", "barrel", -3, 1); yard("workshop", "crate", 3, 1); yard("workshop", "crate", 4, 1);
+    yard("travel", "suitcase", -3, 1); yard("travel", "pot", 3, 1);
+    yard("studio", "tripod", 3, 1); yard("studio", "pot", -3, 1);
+    yard("bank", "pot", -2, 1); yard("bank", "pot", 2, 1);
+    yard("library", "cart", 3, 1); yard("library", "pot", -3, 1);
+    yard("recruiting", "noticeboard", -3, 1); yard("recruiting", "pot", 3, 1);
+    yard("archive", "barrel", 3, 1); yard("archive", "pot", -3, 1);
+    yard("town_hall", "pot", -3, 1); yard("town_hall", "pot", 2, 1);
+    yard("home", "well", 4, 2);
+    for (const ox of [-5, -4, -3, 3]) yard("home", "fence", ox, 1);
     // Trees, bushes and flowers on free grass, keeping a margin around everything built.
     const busy = (x, y) => { for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (at(x + i, y + j) !== 0) return true; return false; };
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -228,11 +247,11 @@
    * 16x24 chibi character (+1px outline margin). dir: 0 down, 1 left, 2 right, 3 up.
    * frame: 0 stand, 1 stride A, 2 stride B. Left is the right-facing sprite mirrored.
    */
-  function charSprite(look, dir, frame, sitting = false) {
-    const key = JSON.stringify([look, dir, frame, sitting]);
+  function charSprite(look, dir, frame, sitting = false, blink = false) {
+    const key = JSON.stringify([look, dir, frame, sitting, blink]);
     if (spriteCache.has(key)) return spriteCache.get(key);
     if (dir === 1) {
-      const src = charSprite(look, 2, frame, sitting);
+      const src = charSprite(look, 2, frame, sitting, blink);
       const [c, g] = canvas(SPR_W, SPR_H);
       g.translate(SPR_W, 0); g.scale(-1, 1); g.drawImage(src, 0, 0);
       spriteCache.set(key, c);
@@ -314,8 +333,8 @@
         if (style === "bun") { P(6, -1 + hy, 4, 2, hairD); P(7, -1 + hy, 2, 1, hair); }
         if (style === "spiky") { P(4, -1 + hy, 1, 1, hair); P(7, -1 + hy, 1, 1, hair); P(10, -1 + hy, 1, 1, hair); }
         // face
-        P(5, 6 + hy, 1, 2, eye); P(10, 6 + hy, 1, 2, eye);
-        P(5, 6 + hy, 1, 1, "#4a3a5a"); P(10, 6 + hy, 1, 1, "#4a3a5a");
+        if (blink) { P(5, 7 + hy, 1, 1, skinD); P(10, 7 + hy, 1, 1, skinD); }
+        else { P(5, 6 + hy, 1, 2, eye); P(10, 6 + hy, 1, 2, eye); P(5, 6 + hy, 1, 1, "#4a3a5a"); P(10, 6 + hy, 1, 1, "#4a3a5a"); }
         P(4, 8 + hy, 1, 1, "#e79a8c"); P(11, 8 + hy, 1, 1, "#e79a8c");
         P(7, 9 + hy, 2, 1, shade(skin, -0.22));
         if (look.glasses) { P(4, 6 + hy, 3, 1, "#2e2a36"); P(9, 6 + hy, 3, 1, "#2e2a36"); P(7, 6 + hy, 2, 1, "#2e2a36"); }
@@ -329,7 +348,7 @@
       if (style === "bob") P(3, 3 + hy, 4, 7, hair);
       if (style === "bun") P(3, 0 + hy, 3, 3, hairD);
       if (style === "spiky") { P(5, -1 + hy, 1, 1, hair); P(8, -1 + hy, 1, 1, hair); P(11, -1 + hy, 1, 1, hair); }
-      P(10, 6 + hy, 1, 2, eye); P(10, 6 + hy, 1, 1, "#4a3a5a");
+      if (blink) P(10, 7 + hy, 1, 1, skinD); else { P(10, 6 + hy, 1, 2, eye); P(10, 6 + hy, 1, 1, "#4a3a5a"); }
       P(11, 9 + hy, 1, 1, shade(skin, -0.22)); P(10, 8 + hy, 1, 1, "#e79a8c");
       if (look.glasses) P(9, 6 + hy, 4, 1, "#2e2a36");
     }
@@ -519,6 +538,38 @@
       P(2, 10, 30, 3, PAL.wd0); P(4, 21, 2, 6, "#3a3a44"); P(28, 21, 2, 6, "#3a3a44");
     } else if (kind === "mailbox") {
       P(15, 14, 2, 14, "#5a3420"); P(10, 6, 12, 9, "#c0504d"); P(10, 6, 12, 2, "#d9706c"); P(21, 4, 1, 5, "#ffd34d"); P(22, 4, 3, 2, "#ffd34d");
+    } else if (kind === "barrel") {
+      P(10, 10, 14, 18, "#7a4a2a"); P(10, 10, 3, 18, "#9c6639"); P(21, 10, 3, 18, "#5a3420");
+      P(9, 13, 16, 2, "#5b5f66"); P(9, 23, 16, 2, "#5b5f66"); P(11, 8, 12, 3, "#5a3420"); P(12, 9, 10, 1, "#9c6639");
+    } else if (kind === "crate") {
+      P(8, 12, 18, 16, "#a8743e"); P(8, 12, 18, 2, "#c48d50"); P(8, 12, 2, 16, "#7a4a2a"); P(24, 12, 2, 16, "#7a4a2a");
+      P(8, 26, 18, 2, "#7a4a2a"); for (let i = 0; i < 14; i++) P(10 + i, 14 + i * 0.85, 2, 2, "#7a4a2a");
+    } else if (kind === "pot") {
+      P(11, 18, 12, 10, "#b5562e"); P(10, 17, 14, 3, "#d0703d"); P(13, 20, 2, 7, "#cf7a4a");
+      for (const [dx, dy, c] of [[11, 10, "#3d7a3a"], [15, 7, "#4b8c41"], [19, 10, "#3d7a3a"], [13, 13, "#5a9e48"], [18, 13, "#5a9e48"]]) P(dx, dy, 5, 5, c);
+      P(14, 8, 2, 2, "#e0485c"); P(19, 11, 2, 2, "#ffd34d"); P(11, 12, 2, 2, "#ff9ec4");
+    } else if (kind === "well") {
+      P(6, 16, 22, 12, "#8f8a80"); P(6, 16, 22, 3, "#b4aea2"); P(9, 18, 16, 3, "#2a4f8f");
+      for (let x = 6; x < 28; x += 5) P(x, 22, 1, 6, "#6f6a60");
+      P(7, 3, 2, 14, PAL.wd1); P(25, 3, 2, 14, PAL.wd1); P(4, 0, 26, 4, "#9b3a32"); P(4, 3, 26, 1, "#6e2a24");
+      P(16, 4, 1, 8, "#c9b48a"); P(14, 11, 5, 4, PAL.wd2);
+    } else if (kind === "tripod") {
+      P(16, 14, 2, 14, "#2b2b33"); P(12, 26, 2, 2, "#2b2b33"); P(20, 26, 2, 2, "#2b2b33");
+      for (let i = 0; i < 6; i++) { P(15 - i * 0.6, 20 + i, 1, 1, "#2b2b33"); P(18 + i * 0.6, 20 + i, 1, 1, "#2b2b33"); }
+      P(10, 8, 14, 8, "#3a3a44"); P(23, 9, 4, 6, "#55555f"); P(12, 10, 4, 3, "#7fd1ff"); P(11, 6, 3, 2, "#d8383a");
+    } else if (kind === "suitcase") {
+      P(9, 14, 16, 13, "#8a5a2b"); P(9, 14, 16, 2, "#a8743e"); P(14, 11, 6, 3, "#5a3420"); P(15, 12, 4, 1, "#a8743e");
+      P(11, 18, 4, 4, "#e0485c"); P(18, 20, 5, 3, "#3a7bd5"); P(9, 26, 16, 1, "#5a3420");
+    } else if (kind === "noticeboard") {
+      P(9, 14, 2, 14, PAL.wd1); P(23, 14, 2, 14, PAL.wd1); P(6, 4, 22, 14, PAL.wd1); P(7, 5, 20, 12, "#c9a46a");
+      P(9, 7, 6, 7, "#fbf8ef"); P(17, 6, 8, 5, "#ffe08a"); P(18, 12, 6, 4, "#bfe7ff"); P(11, 7, 2, 1, "#d8383a");
+    } else if (kind === "cart") {
+      P(6, 12, 22, 10, PAL.wd2); P(6, 12, 22, 2, shade(PAL.wd2, 0.12));
+      ["#c0504d", "#3a7d44", "#5b5ea6", "#e07b39", "#d9c27a", "#c0504d"].forEach((c, i) => P(8 + i * 3, 7 + (i % 2), 2, 6 - (i % 2), c));
+      P(8, 20, 6, 6, "#3a3a44"); P(20, 20, 6, 6, "#3a3a44"); P(10, 22, 2, 2, "#8a8a94"); P(22, 22, 2, 2, "#8a8a94");
+    } else if (kind === "fence") {
+      P(0, 17, 34, 2, "#e8dcc0"); P(0, 22, 34, 2, "#e8dcc0");
+      for (let x = 1; x < 34; x += 6) { P(x, 12, 3, 16, "#f4ecd8"); P(x + 2, 12, 1, 16, "#cfc2a6"); P(x + 1, 11, 1, 1, "#f4ecd8"); }
     } else if (kind === "signpost") {
       P(15, 6, 2, 22, PAL.wd1); P(6, 6, 20, 6, PAL.wd2); P(6, 6, 20, 1, shade(PAL.wd2, 0.12)); P(4, 8, 2, 2, PAL.wd2);
       P(9, 8, 12, 1, PAL.wd0); P(11, 10, 8, 1, PAL.wd0);
@@ -581,6 +632,26 @@
       g.beginPath(); g.moveTo(x1, y0); g.lineTo(x1 + 6, y0 + 6); g.lineTo(x1 + 6, y1 + 4); g.lineTo(b.x * T + 10, y1 + 4); g.lineTo(b.x * T + 6, y1); g.lineTo(x1, y1); g.closePath(); g.fill();
     }
     for (const t of trees) if (t.kind !== "bush") { g.beginPath(); g.ellipse(t.x + 3, t.y + 1, 11, 4, 0, 0, 7); g.fill(); }
+    // pond: sandy shore, deep centre, reeds and lily pads
+    for (let y = POND.y - POND.ry - 8; y < POND.y + POND.ry + 8; y++) for (let x = POND.x - POND.rx - 8; x < POND.x + POND.rx + 8; x++) {
+      if (inPond(x, y, 6)) {
+        let col = inPond(x, y, 3) ? PAL.p2 : PAL.p1;
+        if (inPond(x, y)) col = inPond(x, y, -6) ? (inPond(x, y, -16) ? "#2f68b8" : PAL.w0) : "#4a8ad8";
+        if (inPond(x, y) && !inPond(x, y, -1.5)) col = "#245a9e";
+        P(x, y, 1, 1, col);
+      }
+    }
+    for (const [ox, oy] of [[-0.5, -0.2], [0.35, 0.3], [0.1, -0.45], [-0.25, 0.4]]) {
+      const lx = Math.round(POND.x + ox * POND.rx), ly = Math.round(POND.y + oy * POND.ry);
+      g.fillStyle = "#1d5a2a"; g.beginPath(); g.ellipse(lx, ly, 5, 3, 0, 0, 7); g.fill();
+      g.fillStyle = "#4b9a46"; g.beginPath(); g.ellipse(lx, ly - 0.5, 4, 2.4, 0, 0.5, 6.1); g.fill();
+      if (ox < 0) { P(lx - 1, ly - 2, 2, 2, "#ff9ec4"); P(lx, ly - 2, 1, 1, "#ffffff"); }
+    }
+    for (const ang of [2.4, 2.6, 2.8, 0.2, 0.35, 5.9]) {
+      const rx = Math.round(POND.x + Math.cos(ang) * (POND.rx + 1)), ry = Math.round(POND.y + Math.sin(ang) * (POND.ry + 1));
+      for (let k = 0; k < 3; k++) { P(rx + k * 2, ry - 7 + k, 1, 8 - k, PAL.gDeep); P(rx + k * 2, ry - 8 + k, 1, 2, "#7a5a32"); }
+    }
+
     // fountain: stone rim, basin and pedestal
     const { x: fx, y: fy, r: fr } = FOUNTAIN;
     const ring = (rad, col) => { g.fillStyle = col; g.beginPath(); g.arc(fx, fy, rad, 0, 7); g.fill(); };
@@ -599,7 +670,8 @@
   let showNav = false;
   let chatWith = null;
   let meeting = null;        // { agenda, done }
-  const smoke = [], birds = [], sparkles = [];
+  const smoke = [], birds = [], sparkles = [], dust = [], leaves = [], clouds = [], butterflies = [], fireflies = [];
+  let wind = 0;
   let lastM = 0;
   const qsHour = Number(new URLSearchParams(location.search).get("hour"));
   const hourNow = () => (Number.isFinite(qsHour) && qsHour > 0 ? qsHour : new Date().getHours() + new Date().getMinutes() / 60);
@@ -713,6 +785,7 @@
     if (dy && !blockedAt(player.x, player.y + dy * speed)) player.y += dy * speed;
     player.dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0;
     animate(player, dt * (keys.has("shift") ? 1.8 : 1));
+    if (keys.has("shift") && scene === "town" && rand() < dt * 14) dust.push({ x: player.x + (rand() - 0.5) * 6, y: player.y - 1, life: 1 });
     if (scene === "town") {
       const tx = Math.floor(player.x / T), ty = Math.floor((player.y - 4) / T);
       if (at(tx, ty) === 4 && dy < 0) {
@@ -884,7 +957,8 @@
   const toScreen = (x, y) => [(x - camX) * S, (y - camY) * S];
 
   function drawPerson(p, x, y, opts = {}) {
-    const s = charSprite(lookOf(p), opts.dir ?? p.dir, opts.sitting ? 0 : p.frame, !!opts.sitting);
+    const blink = ((performance.now() / 1000 + (hash(p.id) % 997) / 97) % 3.7) < 0.13;
+    const s = charSprite(lookOf(p), opts.dir ?? p.dir, opts.sitting ? 0 : p.frame, !!opts.sitting, blink);
     lg.fillStyle = "rgba(20,20,30,.28)";
     lg.beginPath(); lg.ellipse(Math.round(x), Math.round(y), 6, 2, 0, 0, 7); lg.fill();
     lg.drawImage(s, Math.round(x - SPR_W / 2), Math.round(y - SPR_H + 1));
@@ -917,6 +991,25 @@
       lg.fillRect(fx + Math.cos(ang) * a * 10, fy - 14 - Math.sin(a * Math.PI) * 9 + Math.sin(ang) * a * 4, 1, 1);
     }
 
+    // pond: ripples and ducks
+    for (let i = 0; i < 3; i++) {
+      const k = ((t * 0.35 + i / 3) % 1), rx = 4 + k * 14;
+      lg.strokeStyle = `rgba(220,240,255,${0.35 * (1 - k)})`;
+      lg.beginPath(); lg.ellipse(POND.x - 18 + i * 20, POND.y + (i - 1) * 8, rx, rx * 0.45, 0, 0, 7); lg.stroke();
+    }
+    for (let i = 0; i < 2; i++) {
+      const a = t * (0.12 + i * 0.05) + i * 2.6, dir = Math.cos(a + Math.PI / 2) * (i ? -1 : 1);
+      const dx = Math.round(POND.x + Math.cos(a) * POND.rx * (0.52 - i * 0.12) * (i ? -1 : 1)), dy = Math.round(POND.y + Math.sin(a) * POND.ry * 0.45);
+      lg.fillStyle = "rgba(220,240,255,.5)"; lg.fillRect(dx - 6 * Math.sign(dir || 1), dy + 2, 4, 1);
+      drawDuck(dx, dy, dir < 0, i);
+    }
+    for (const d of dust) { lg.fillStyle = `rgba(222,200,160,${d.life * 0.8})`; const r = Math.ceil(1 + (1 - d.life) * 3); lg.fillRect(Math.round(d.x - r / 2), Math.round(d.y - r / 2), r, r); }
+    const focus = nearest();
+    if (focus) {
+      const pulse = 7 + Math.sin(t * 6) * 1;
+      lg.strokeStyle = "rgba(255,214,90,.9)"; lg.beginPath(); lg.ellipse(Math.round(focus.x), Math.round(focus.y), pulse, pulse * 0.4, 0, 0, 7); lg.stroke();
+    }
+
     // y-sorted drawables
     const items = [];
     const inView = (x, y, m = 48) => x > camX - m && x < camX + vw + m && y > camY - m && y < camY + vh + 80;
@@ -926,7 +1019,12 @@
     }
     for (const tr of trees) if (inView(tr.x, tr.y)) {
       const img = world.trees[tr.kind];
-      items.push({ y: tr.y, draw: () => lg.drawImage(img, tr.x - (img.width >> 1), tr.y - img.height + 3) });
+      const dx = tr.x - (img.width >> 1), dy = tr.y - img.height + 3;
+      if (tr.kind === "bush") items.push({ y: tr.y, draw: () => lg.drawImage(img, dx, dy) });
+      else {
+        const sway = Math.round(Math.sin(t * 1.3 + tr.x * 0.07) * 0.6 + wind * 0.8);
+        items.push({ y: tr.y, draw: () => { lg.drawImage(img, 0, 24, img.width, img.height - 24, dx, dy + 24, img.width, img.height - 24); lg.drawImage(img, 0, 0, img.width, 24, dx + sway, dy, img.width, 24); } });
+      }
     }
     for (const pr of props) if (inView(pr.x, pr.y)) {
       const img = world.props[pr.kind];
@@ -945,6 +1043,20 @@
       lg.fillRect(bx - 3, by + flap, 3, 1); lg.fillRect(bx, by, 1, 1); lg.fillRect(bx + 1, by + flap, 3, 1);
     }
 
+    // butterflies by day, falling leaves, drifting cloud shadows
+    const hr = hourNow(), day = hr >= 7 && hr < 19;
+    if (day) for (const b of butterflies) {
+      const flap = Math.sin(t * 18 + b.ph) > 0;
+      lg.fillStyle = PAL.out; lg.fillRect(Math.round(b.x), Math.round(b.y), 1, 2);
+      lg.fillStyle = b.col;
+      if (flap) { lg.fillRect(Math.round(b.x) - 2, Math.round(b.y) - 1, 2, 2); lg.fillRect(Math.round(b.x) + 1, Math.round(b.y) - 1, 2, 2); }
+      else { lg.fillRect(Math.round(b.x) - 1, Math.round(b.y), 1, 1); lg.fillRect(Math.round(b.x) + 1, Math.round(b.y), 1, 1); }
+    }
+    for (const l of leaves) { lg.fillStyle = l.col; lg.fillRect(Math.round(l.x), Math.round(l.y), Math.sin(l.spin) > 0 ? 2 : 1, 1); }
+    lg.globalAlpha = 0.11;
+    for (const c of clouds) lg.drawImage(world.cloud, Math.round(c.x), Math.round(c.y), world.cloud.width * c.s, world.cloud.height * c.s);
+    lg.globalAlpha = 1;
+
     if (showNav) {
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         lg.fillStyle = solid(at(x, y)) ? "rgba(220,40,40,.35)" : "rgba(40,220,90,.22)";
@@ -952,12 +1064,23 @@
       }
     }
     lighting(t, true);
+    if (!day) { // fireflies
+      lg.save(); lg.globalCompositeOperation = "lighter";
+      for (const f of fireflies) {
+        const a = 0.5 + Math.sin(t * 3 + f.ph) * 0.5;
+        lg.fillStyle = `rgba(220,255,120,${a})`; lg.fillRect(Math.round(f.x), Math.round(f.y), 1, 1);
+        lg.fillStyle = `rgba(200,255,100,${a * 0.25})`; lg.fillRect(Math.round(f.x) - 1, Math.round(f.y) - 1, 3, 3);
+      }
+      lg.restore();
+    }
     blit();
 
     // text overlay at screen resolution
     for (const p of people) if (visible(p) && dist(p, player) < 7 * T) {
       nameTag(p.name, p.x, p.y - CHAR_H - 2, p.role === "worker" ? "#f2c230" : p.role === "chief_of_staff" ? "#9fd3ff" : "#fff6dc");
     }
+    const pending = new Set(roster.review.filter((r) => r.status === "pending_review").map((r) => r.agent));
+    for (const p of people) if (visible(p) && pending.has(p.id) && !p.bubble) badge(p.x, p.y - CHAR_H - 14 - Math.round(Math.abs(Math.sin(t * 4)) * 3));
     for (const p of people) if (visible(p) && p.bubble) speech(p.bubble.text, p.x, p.y - CHAR_H - 10);
     for (const [id, b] of Object.entries(LAYOUT)) {
       const d = doorPx(id);
@@ -1012,10 +1135,31 @@
     lg.restore();
   }
 
+  function drawDuck(x, y, left, i) {
+    const bob = Math.round(Math.sin(performance.now() / 400 + i) * 0.5);
+    const P = (dx, dy, w, h, col) => { lg.fillStyle = col; lg.fillRect(left ? x - dx - w : x + dx, y + dy + bob, w, h); };
+    P(-5, -2, 9, 5, PAL.out); P(-4, -1, 7, 3, i ? "#fbf8ef" : "#8a6a48"); P(-4, 1, 7, 1, i ? "#d9d2c2" : "#6a4f34");
+    P(1, -5, 4, 4, PAL.out); P(2, -4, 2, 2, i ? "#fbf8ef" : "#2f7a4a"); P(4, -3, 2, 1, "#f2a530"); P(3, -4, 1, 1, PAL.out);
+  }
+  function badge(wx, wy) {
+    const [sx, sy] = toScreen(wx, wy);
+    const s = Math.round(16 * dpr), x = Math.round(sx - s / 2), y = Math.round(sy - s);
+    ctx.fillStyle = "#1d1420"; ctx.fillRect(x - dpr, y - dpr, s + 2 * dpr, s + 2 * dpr);
+    ctx.fillStyle = "#f2c230"; ctx.fillRect(x, y, s, s);
+    ctx.fillStyle = "#1d1420"; ctx.fillRect(x + s / 2 - dpr, y + 3 * dpr, 2 * dpr, 7 * dpr); ctx.fillRect(x + s / 2 - dpr, y + 12 * dpr, 2 * dpr, 2 * dpr);
+  }
+  let vignette = null, vignetteKey = "";
   function blit() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(lo, 0, 0, lo.width * S, lo.height * S);
+    const key = `${cv.width}x${cv.height}`;
+    if (key !== vignetteKey) {
+      vignetteKey = key;
+      vignette = ctx.createRadialGradient(cv.width / 2, cv.height / 2, Math.min(cv.width, cv.height) * 0.45, cv.width / 2, cv.height / 2, Math.hypot(cv.width, cv.height) * 0.6);
+      vignette.addColorStop(0, "rgba(16,8,24,0)"); vignette.addColorStop(1, "rgba(16,8,24,.38)");
+    }
+    ctx.fillStyle = vignette; ctx.fillRect(0, 0, cv.width, cv.height);
   }
 
   function nameTag(text, wx, wy, color, sign = false) {
@@ -1044,6 +1188,29 @@
 
   // ------------------------------------------------------------------ interior rendering
   const roomCache = {};
+  /** One wall feature per house, in the free wall space right of the fireplace. */
+  function wallDecor(g, id, P) {
+    const x = 144, y = 6;
+    const frame = (w, h) => { P(x - 1, y - 1, w + 2, h + 2, PAL.out); P(x, y, w, h, PAL.wd1); };
+    switch (id) {
+      case "travel": frame(40, 26); P(x + 2, y + 2, 36, 22, "#7fb8e0");
+        for (const [mx, my, mw, mh] of [[5, 6, 8, 7], [16, 4, 6, 10], [25, 8, 10, 8], [8, 15, 6, 5]]) P(x + mx, y + my, mw, mh, "#7cbf6a");
+        P(x + 10, y + 9, 2, 2, "#d8383a"); P(x + 28, y + 11, 2, 2, "#d8383a"); P(x + 18, y + 7, 2, 2, "#d8383a"); break;
+      case "bank": P(x + 4, y - 1, 30, 30, PAL.out); P(x + 5, y, 28, 28, "#6f7b86"); g.fillStyle = "#9aa6b1"; g.beginPath(); g.arc(x + 19, y + 14, 9, 0, 7); g.fill();
+        P(x + 18, y + 6, 2, 16, "#55606b"); P(x + 11, y + 13, 16, 2, "#55606b"); P(x + 6, y + 2, 3, 3, "#cfd6dd"); break;
+      case "inbox": frame(40, 28); for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { P(x + 2 + c * 9, y + 2 + r * 9, 8, 8, "#3b2414"); if ((r + c) % 2) P(x + 3 + c * 9, y + 5 + r * 9, 6, 4, "#fbf8ef"); } break;
+      case "studio": frame(40, 26); P(x + 2, y + 2, 36, 22, "#3aa85a"); P(x + 14, y + 8, 12, 10, "#2e8a4a"); P(x + 2, y + 2, 36, 2, "#4cc06c"); break;
+      case "workshop": frame(40, 28); P(x + 2, y + 2, 36, 24, "#1e2a24"); for (let i = 0; i < 4; i++) P(x + 4, y + 4 + i * 5, 32, 4, "#2b3a32"); break;
+      case "library": case "archive": frame(40, 28); for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { P(x + 2 + c * 9, y + 2 + r * 9, 8, 8, id === "archive" ? "#8e6c8a" : "#3b2414"); P(x + 4 + c * 9, y + 4 + r * 9, 4, 2, "#d8c9a0"); } break;
+      case "recruiting": frame(40, 26); P(x + 2, y + 2, 36, 22, "#c9a46a");
+        for (const [nx, ny, c] of [[4, 4, "#fbf8ef"], [16, 6, "#ffe08a"], [28, 4, "#bfe7ff"], [8, 14, "#ffe08a"], [22, 15, "#fbf8ef"]]) { P(x + nx, y + ny, 8, 7, c); P(x + nx + 3, y + ny, 2, 1, "#d8383a"); } break;
+      case "home": frame(36, 24); P(x + 2, y + 2, 32, 20, "#9fd3ff"); P(x + 2, y + 14, 32, 8, "#5a9e48"); P(x + 24, y + 5, 5, 5, "#ffd34d"); P(x + 6, y + 9, 10, 5, "#3d7a3a"); break;
+      case "town_hall": for (const bx of [x, x + 22]) { P(bx, y, 16, 28, "#9b3a32"); P(bx + 2, y + 2, 12, 24, "#b8473e"); P(bx + 5, y + 8, 6, 6, "#f2c230"); P(bx, y + 28, 16, 3, "#c9a46a"); } break;
+      default: frame(32, 22); P(x + 2, y + 2, 28, 18, "#e8c48a"); P(x + 6, y + 8, 10, 10, "#c0504d");
+    }
+    // wall clock
+    P(7, 7, 12, 12, PAL.out); P(8, 8, 10, 10, "#fbf8ef"); P(12, 9, 1, 1, PAL.out);
+  }
   function roomBackdrop(id) {
     if (roomCache[id]) return roomCache[id];
     const b = LAYOUT[id], r = mulberry32(hash(id) + 1);
@@ -1085,6 +1252,7 @@
     for (let x = ROOM_W / 2 - 40; x < ROOM_W / 2 + 40; x += 6) P(x, 97, 3, 2, shade(b.roof, -0.12));
     // doormat
     P(ROOM_W / 2 - 12, ROOM_H - 6, 24, 6, "#6b5a3a"); P(ROOM_W / 2 - 12, ROOM_H, 24, 4, PAL.out);
+    wallDecor(g, id, P);
     roomCache[id] = c;
     return c;
   }
@@ -1132,10 +1300,20 @@
         P(100, 68, 6, 3, "#f4ecd8"); P(134, 66, 4, 4, "#e0485c");
         themedProp(id, t);
       } });
+      // blinking server LEDs in the workshop
+      if (id === "workshop") for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) {
+        lg.fillStyle = Math.sin(t * (3 + j) + i * 1.7 + j) > 0.2 ? (j % 2 ? "#6fcf7f" : "#f2c230") : "#203028";
+        lg.fillRect(150 + j * 5, 12 + i * 5, 2, 2);
+      }
       for (const p of people) if (p.role === "director" && p.house === id && p.inside) {
         items.push({ y: DESK.y, draw: () => drawPerson(p, DESK.x, DESK.y, { sitting: true, dir: 0 }) });
       }
     }
+    // live wall-clock hands (real time)
+    const d = new Date(), mA = (d.getMinutes() / 60) * Math.PI * 2, hA = ((d.getHours() % 12) / 12) * Math.PI * 2 + mA / 12;
+    lg.fillStyle = PAL.out;
+    for (let k = 0; k < 4; k++) lg.fillRect(Math.round(12.5 + Math.sin(mA) * k), Math.round(12.5 - Math.cos(mA) * k), 1, 1);
+    for (let k = 0; k < 3; k++) lg.fillRect(Math.round(12.5 + Math.sin(hA) * k), Math.round(12.5 - Math.cos(hA) * k), 1, 1);
     const c = chief();
     if (c && c.rx !== undefined) items.push({ y: c.ry, draw: () => drawPerson(c, c.rx, c.ry) });
     items.push({ y: player.y, draw: () => drawPerson(player, player.x, player.y) });
@@ -1171,6 +1349,22 @@
   }
 
   function updateFx(dt) {
+    const t = performance.now() / 1000;
+    wind = Math.max(0, Math.sin(t * 0.21)) ** 6; // an occasional gust
+    for (const c of clouds) { c.x += dt * (6 + wind * 10); if (c.x > W * T + 60) { c.x = -world.cloud.width * c.s - 40; c.y = rand() * H * T; } }
+    for (const b of butterflies) {
+      b.ph += dt; b.x += Math.cos(b.ph * 0.7 + b.seed) * dt * 14; b.y += Math.sin(b.ph * 1.1 + b.seed) * dt * 9;
+      if (Math.hypot(b.x - b.hx, b.y - b.hy) > 40) { b.x += (b.hx - b.x) * dt; b.y += (b.hy - b.y) * dt; }
+    }
+    for (const f of fireflies) { f.ph += dt; f.x += Math.cos(f.ph * 0.6 + f.seed) * dt * 6; f.y += Math.sin(f.ph * 0.8 + f.seed) * dt * 5; }
+    if (rand() < dt * (0.6 + wind * 6)) {
+      const tr = trees[(rand() * trees.length) | 0];
+      if (tr && tr.kind === "oak") leaves.push({ x: tr.x - 8 + rand() * 16, y: tr.y - 34 + rand() * 10, vy: 8 + rand() * 6, spin: rand() * 6, col: rand() < 0.5 ? "#e0a030" : PAL.g2, life: 4 });
+    }
+    for (const l of leaves) { l.y += l.vy * dt; l.x += (Math.sin(l.spin) * 6 + wind * 18) * dt; l.spin += dt * 4; l.life -= dt; }
+    for (let i = leaves.length - 1; i >= 0; i--) if (leaves[i].life <= 0) leaves.splice(i, 1);
+    for (const d of dust) { d.life -= dt * 2.2; d.y -= dt * 4; }
+    while (dust.length && dust[0].life <= 0) dust.shift();
     if (rand() < dt * 3) for (const [id, b] of Object.entries(LAYOUT)) if (id !== "town_hall" && id !== "studio" && rand() < 0.5)
       smoke.push({ x: b.x * T + b.w * T - 20 + rand() * 4, y: b.y * T - 12, life: 1 });
     for (const s of smoke) { s.y -= dt * 9; s.x += dt * (3 + Math.sin(s.y / 6)); s.life -= dt * 0.28; }
@@ -1200,6 +1394,7 @@
     updateFx(dt);
     if (scene === "town") renderTown(now); else renderRoom(now);
     updateHint();
+    drawMinimap(now / 1000);
     requestAnimationFrame(frame);
   }
 
@@ -1380,6 +1575,35 @@
     }
   });
   $("help-btn").addEventListener("click", () => $("help").classList.toggle("hidden"));
+  function setMap(on) {
+    $("minimap").hidden = !on; $("map-btn").setAttribute("aria-pressed", String(on));
+    try { localStorage.setItem("villageMap", on ? "1" : "0"); } catch {}
+  }
+  $("map-btn").addEventListener("click", () => setMap($("minimap").hidden));
+  { let pref = null; try { pref = localStorage.getItem("villageMap"); } catch {} setMap(pref ? pref === "1" : innerWidth >= 900); }
+
+  // ------------------------------------------------------------------ minimap
+  let miniBase = null;
+  function drawMinimap(t) {
+    const m = $("minimap");
+    m.style.visibility = scene === "town" ? "visible" : "hidden";
+    if (m.hidden || scene !== "town") return;
+    const g = m.getContext("2d");
+    if (!miniBase) {
+      const [c, mg] = canvas(W * 2, H * 2);
+      const col = { 0: PAL.g1, 1: PAL.p0, 2: PAL.s0, 4: PAL.p0, 5: PAL.gDeep, 6: PAL.w0, 7: PAL.g2, 8: PAL.s1, 9: PAL.g0, 10: PAL.w0 };
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { mg.fillStyle = col[at(x, y)] || PAL.g1; mg.fillRect(x * 2, y * 2, 2, 2); }
+      for (const b of Object.values(LAYOUT)) { mg.fillStyle = PAL.out; mg.fillRect(b.x * 2 - 1, b.y * 2 - 1, b.w * 2 + 2, b.h * 2 + 2); mg.fillStyle = b.roof; mg.fillRect(b.x * 2, b.y * 2, b.w * 2, b.h * 2); }
+      miniBase = c;
+    }
+    g.imageSmoothingEnabled = false;
+    g.drawImage(miniBase, 0, 0);
+    for (const p of people) if (!p.inside && !p.inHall) { g.fillStyle = p.role === "worker" ? "#f2c230" : p.palette?.shirt || "#fff"; g.fillRect(Math.round(p.x / 8) - 1, Math.round(p.y / 8) - 2, 3, 3); }
+    const blink = Math.sin(t * 6) > 0;
+    const pp = scene === "town" ? player : doorPx(scene);
+    g.fillStyle = PAL.out; g.fillRect(Math.round(pp.x / 8) - 2, Math.round(pp.y / 8) - 3, 5, 5);
+    g.fillStyle = blink ? "#ffffff" : "#f2c230"; g.fillRect(Math.round(pp.x / 8) - 1, Math.round(pp.y / 8) - 2, 3, 3);
+  }
 
   // ------------------------------------------------------------------ boot
   async function refresh() {
@@ -1401,8 +1625,21 @@
   buildMap();
   world.ground = drawGround();
   for (const k of ["oak", "pine", "bush"]) world.trees[k] = drawTree(k);
-  for (const k of ["lamp", "bench", "mailbox", "signpost"]) world.props[k] = drawProp(k);
+  for (const k of ["lamp", "bench", "mailbox", "signpost", "barrel", "crate", "pot", "well", "tripod", "suitcase", "noticeboard", "cart", "fence"]) world.props[k] = drawProp(k);
   for (const id of Object.keys(LAYOUT)) world.houses[id] = drawHouse(id);
+  world.cloud = (() => {
+    const [c, g] = canvas(140, 70); g.fillStyle = "#101828";
+    for (const [x, y, r] of [[40, 38, 24], [70, 30, 30], [100, 40, 22], [60, 48, 22], [86, 50, 18]]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+    return c;
+  })();
+  for (let i = 0; i < 4; i++) clouds.push({ x: rand() * W * T, y: rand() * H * T, s: 1 + rand() * 1.2 });
+  const flowerTiles = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (at(x, y) === 7) flowerTiles.push([x, y]);
+  for (let i = 0; i < 9 && flowerTiles.length; i++) {
+    const [fx, fy] = flowerTiles[(rand() * flowerTiles.length) | 0];
+    butterflies.push({ x: fx * T + 8, y: fy * T + 4, hx: fx * T + 8, hy: fy * T + 4, ph: rand() * 6, seed: rand() * 6, col: ["#ffd34d", "#ff9ec4", "#bfe7ff", "#ffffff"][i % 4] });
+  }
+  for (let i = 0; i < 40; i++) fireflies.push({ x: rand() * W * T, y: rand() * H * T, ph: rand() * 6, seed: rand() * 6 });
   player.x = FOUNTAIN.x; player.y = (PLAZA.y + PLAZA.h - 4) * T;
   resize();
   refresh().then(() => {
