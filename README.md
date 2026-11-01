@@ -156,7 +156,14 @@ at other names in `village/village.json`:
 Tools whose names suggest sending, posting, paying, trading, sharing or deleting
 are dropped before they reach the CLI, whatever the config says.
 
-Everything is drawn in code at true pixel size and scaled by whole device pixels,
+**Painted art.** To get the look of a painted 3D game, drop images into
+`village/assets/` (characters, buildings, rooms, trees, props, ground textures).
+Each image replaces the matching pixel art, and anything still missing stays
+pixel art. The UI switches to a cleaner theme once any painted art is loaded.
+[`docs/village-art-prompts.md`](docs/village-art-prompts.md) has the style guide,
+exact prompts, file names and sizes.
+
+Without painted art, everything is drawn in code at true pixel size and scaled by whole device pixels,
 so the art stays crisp on any screen. There are no image assets and no
 image-generation credits to spend. The village has touch controls on phones and
 a day/night cycle that follows your clock (try `?hour=21`), plus a pond with ducks,

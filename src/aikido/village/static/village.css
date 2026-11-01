@@ -139,3 +139,34 @@ li { margin: 5px 0; font-size: 14px; }
   #toasts { bottom: auto; top: 104px; left: 12px; align-items: flex-end; }
 }
 @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+
+/* --- painted-art theme (body.hd): the clean look from the art direction mockups --- */
+.logo-hd { display: none; }
+body.hd {
+  --ui: "Nunito", system-ui, sans-serif;
+  --label: "Nunito", system-ui, sans-serif;
+  --panel: #1f1a33;
+  --panel-2: #2a2342;
+  --button: #3f3463;
+  --button-hi: #4f4278;
+  --gold: #d9a441;
+}
+body.hd #toolbar { background: #191428; border-bottom: 1px solid #c9963a; box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 10px 16px; }
+body.hd .logo { display: none; }
+body.hd .logo-hd { display: grid; place-items: center; width: 36px; height: 36px; background: #2c2448; color: var(--gold); border-radius: 6px; }
+body.hd .brand { font-weight: 800; font-size: 17px; letter-spacing: .28em; text-transform: uppercase; gap: 12px; }
+body.hd .badge { background: #c9963a; color: #1e1406; border: 0; border-radius: 4px; font-weight: 800; letter-spacing: 0; padding: 3px 8px; text-transform: none; }
+body.hd .badge.offline { background: #8a6a3a; color: #fff3dd; }
+body.hd input, body.hd select, body.hd button { font: 600 15px/1.2 var(--ui); border-radius: 6px; border: 1px solid #3c3360; box-shadow: none; padding: 9px 12px; }
+body.hd input, body.hd select { background: #120e20; }
+body.hd button { background: var(--button); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+body.hd button:hover { background: var(--button-hi); }
+body.hd button.primary { background: #c9963a; color: #1e1406; border-color: #c9963a; font-weight: 800; }
+body.hd button.primary:hover { background: #dba94a; }
+body.hd .panel, body.hd .toast { border: 1px solid #3c3360; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.45); background: rgba(31,26,51,.96); }
+body.hd .panel-head { font-weight: 800; font-size: 15px; }
+body.hd #hint, body.hd kbd, body.hd .count, body.hd .item .status { border-radius: 4px; border-width: 1px; }
+body.hd h4 { font-weight: 800; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+body.hd #minimap { border-radius: 8px; border: 1px solid #c9963a; }
+body.hd #portrait { border-radius: 8px; image-rendering: auto; }
+body.hd #touch button { border-radius: 10px; }

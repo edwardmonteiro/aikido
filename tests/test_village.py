@@ -9,7 +9,7 @@ import pytest
 from aikido.village import roster
 from aikido.village.brain import ClaudeBrain, OfflineBrain
 from aikido.village.pdf import render_pdf
-from aikido.village.server import serve
+from aikido.village.server import asset_manifest, serve
 from aikido.village.town import GuardrailError, Town
 
 
@@ -142,3 +142,15 @@ def test_http_api(tmp_path):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_asset_manifest_prefers_the_users_art(tmp_path):
+    mine, builtin = tmp_path / "mine", tmp_path / "builtin"
+    for root, name in ((mine, "bank.png"), (builtin, "bank.png"), (builtin, "oak.webp")):
+        folder = root / ("houses" if name == "bank.png" else "trees")
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_bytes(b"x")
+    (mine / "houses" / "notes.txt").write_text("ignored")
+    m = asset_manifest(mine, builtin)
+    assert m["houses"] == {"bank": "houses/bank.png"} and m["trees"] == {"oak": "trees/oak.webp"}
+    assert set(m) == {"ground", "houses", "trees", "props", "rooms", "characters"}

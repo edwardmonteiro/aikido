@@ -12,6 +12,8 @@ Bound to 127.0.0.1 only — the village is a local app, never exposed.
     POST /api/hire     {director, name, approved_by_human}
     GET  /api/jobs/<id>
     GET  /files/<path>                  deliverables (md / pdf) under the village root
+    GET  /assets/manifest.json          painted art available (village/assets/ overrides built-ins)
+    GET  /assets/<kind>/<name>.png      one painted asset
 """
 
 from __future__ import annotations
@@ -26,6 +28,26 @@ from typing import Tuple
 from aikido.village.town import GuardrailError, Town
 
 STATIC = Path(str(resources.files("aikido.village") / "static"))
+
+# Painted art the game uses instead of its built-in pixel art, one folder per
+# kind. Files are named after what they depict (houses/bank.png, rooms/bank.png,
+# characters/finance.png, ...); anything missing falls back to pixel art.
+ASSET_KINDS = ("ground", "houses", "trees", "props", "rooms", "characters")
+ASSET_TYPES = {".png", ".webp", ".jpg", ".jpeg"}
+
+
+def asset_manifest(*roots: Path) -> dict:
+    """Which painted assets exist. Earlier roots win (the user's village folder first)."""
+    manifest: dict = {kind: {} for kind in ASSET_KINDS}
+    for root in reversed(roots):
+        for kind in ASSET_KINDS:
+            folder = root / kind
+            if not folder.is_dir():
+                continue
+            for f in sorted(folder.iterdir()):
+                if f.suffix.lower() in ASSET_TYPES and f.is_file():
+                    manifest[kind][f.stem] = f"{kind}/{f.name}"
+    return manifest
 
 
 def make_handler(town: Town):
@@ -70,6 +92,14 @@ def make_handler(town: Town):
                 return self._json(200, job) if job else self._json(404, {"error": "no such job"})
             if path.startswith("/files/"):
                 return self._file(town.root, path[len("/files/"):])
+            if path == "/assets/manifest.json":
+                return self._json(200, asset_manifest(town.root / "assets", STATIC / "assets"))
+            if path.startswith("/assets/"):
+                rel = path[len("/assets/"):]
+                own = (town.root / "assets" / rel).resolve()
+                if own.is_file() and (town.root / "assets").resolve() in own.parents:
+                    return self._file(town.root / "assets", rel)
+                return self._file(STATIC / "assets", rel)
             return self._file(STATIC, "index.html" if path == "/" else path.lstrip("/"))
 
         def do_POST(self):

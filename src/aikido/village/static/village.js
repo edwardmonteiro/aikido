@@ -661,6 +661,108 @@
     return c;
   }
 
+  // ------------------------------------------------------------------ painted art (optional)
+  // Drop images into village/assets/<kind>/<name>.png (see docs/village-art-prompts.md).
+  // Whatever exists replaces the pixel art; anything missing keeps the pixel art.
+  const ART = { ground: {}, houses: {}, trees: {}, props: {}, rooms: {}, characters: {} };
+  let HD = false;
+  const loadImage = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+
+  /** Downscale, and key out a solid green (#00FF00) background if the image has one. */
+  function keyed(img, maxW = 1600) {
+    const k = Math.min(1, maxW / img.width), w = Math.round(img.width * k), h = Math.round(img.height * k);
+    const [c, g] = canvas(w, h);
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high"; g.drawImage(img, 0, 0, w, h);
+    const data = g.getImageData(0, 0, w, h), d = data.data;
+    const greenAt = (i) => d[i + 1] > 150 && d[i + 1] > d[i] * 1.5 && d[i + 1] > d[i + 2] * 1.5;
+    const corners = [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + w - 1) * 4];
+    if (corners.filter(greenAt).length >= 3) {
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], gr = d[i + 1], b = d[i + 2];
+        if (gr > 100 && gr > r * 1.3 && gr > b * 1.3) d[i + 3] = 0;
+        else if (gr > r && gr > b) d[i + 1] = Math.max(r, b); // remove green spill on edges
+      }
+      g.putImageData(data, 0, 0);
+    }
+    return c;
+  }
+  /** A character sheet: 3 columns (stand, step, step) x 4 rows (down, left, right, up) [+ a sitting row]. */
+  function sheet(img) {
+    const c = keyed(img, 1200), rows = c.width / c.height < 0.45 ? 5 : 4, cw = c.width / 3, ch = c.height / rows;
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    const cells = [];
+    for (let r = 0; r < rows; r++) {
+      cells.push([]);
+      for (let col = 0; col < 3; col++) {
+        let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+        for (let y = Math.floor(r * ch); y < Math.floor((r + 1) * ch); y += 2) for (let x = Math.floor(col * cw); x < Math.floor((col + 1) * cw); x += 2) {
+          if (d[(y * c.width + x) * 4 + 3] > 60) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+        cells[r].push(x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 2, h: y1 - y0 + 2 });
+      }
+    }
+    return { canvas: c, rows, cells };
+  }
+  async function loadArt() {
+    let manifest = window.VILLAGE_ASSETS || null;
+    if (!manifest) { try { const r = await fetch("assets/manifest.json", { cache: "no-store" }); if (r.ok) manifest = await r.json(); } catch {} }
+    if (!manifest) return;
+    const jobs = [];
+    for (const kind of Object.keys(ART)) for (const [name, rel] of Object.entries(manifest[kind] || {})) {
+      jobs.push(loadImage("assets/" + rel).then((img) => {
+        ART[kind][name] = kind === "characters" ? sheet(img) : kind === "rooms" ? keyed(img, 2400) : kind === "ground" ? keyed(img, 512) : keyed(img);
+      }).catch(() => {}));
+    }
+    await Promise.all(jobs);
+    HD = Object.values(ART).some((k) => Object.keys(k).length > 0);
+    if (!HD) return;
+    document.body.classList.add("hd");
+    if (Object.keys(ART.ground).length) world.ground = drawGroundHD(world.ground);
+  }
+  function drawArt(img, ...args) {
+    lg.imageSmoothingEnabled = true; lg.imageSmoothingQuality = "high";
+    lg.drawImage(img, ...args);
+    lg.imageSmoothingEnabled = false;
+  }
+
+  /** Ground from seamless textures at 2x, with soft edges between grass, path and plaza. */
+  function drawGroundHD(proc) {
+    const K = 2, GW = W * T * K, GH = H * T * K;
+    const [c, g] = canvas(GW, GH);
+    g.drawImage(proc, 0, 0, GW, GH);
+    const kindAt = (tx, ty) => {
+      const v = at(tx, ty), base = v === 8 ? under[ty * W + tx] : v;
+      return base === 2 || base === 6 ? "plaza" : base === 1 || base === 4 ? "path" : base === 10 ? "water" : "grass";
+    };
+    for (const kind of ["grass", "path", "plaza"]) {
+      const tex = ART.ground[kind];
+      if (!tex) continue;
+      const [m, mg] = canvas(GW, GH);
+      mg.fillStyle = "#fff";
+      for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) if (kindAt(tx, ty) === kind) mg.fillRect(tx * T * K - 1, ty * T * K - 1, T * K + 2, T * K + 2);
+      const [l, lgx] = canvas(GW, GH);
+      const pat = lgx.createPattern(tex, "repeat"), sc = (64 * K) / tex.width;
+      pat.setTransform(new DOMMatrix([sc, 0, 0, sc, 0, 0]));
+      lgx.fillStyle = pat; lgx.fillRect(0, 0, GW, GH);
+      lgx.globalCompositeOperation = "destination-in";
+      lgx.filter = kind === "grass" ? "none" : "blur(3px)";
+      lgx.drawImage(m, 0, 0);
+      g.drawImage(l, 0, 0);
+    }
+    // shadows, then the pond and fountain from the hand-built layer
+    g.fillStyle = "rgba(20,30,25,0.22)";
+    for (const b of Object.values(LAYOUT)) {
+      const x1 = ((b.x + b.w) * T - 4) * K, y0 = (b.y * T + Math.round(b.h * T * 0.5) + 4) * K, y1 = (b.y + b.h) * T * K;
+      g.beginPath(); g.moveTo(x1, y0); g.lineTo(x1 + 6 * K, y0 + 6 * K); g.lineTo(x1 + 6 * K, y1 + 4 * K); g.lineTo((b.x * T + 10) * K, y1 + 4 * K); g.lineTo((b.x * T + 6) * K, y1); g.lineTo(x1, y1); g.closePath(); g.fill();
+    }
+    for (const t of trees) if (t.kind !== "bush") { g.beginPath(); g.ellipse((t.x + 3) * K, (t.y + 1) * K, 11 * K, 4 * K, 0, 0, 7); g.fill(); }
+    g.save(); g.beginPath();
+    g.ellipse(POND.x * K, POND.y * K, (POND.rx + 7) * K, (POND.ry + 7) * K, 0, 0, 7);
+    g.moveTo((FOUNTAIN.x + FOUNTAIN.r + 5) * K, FOUNTAIN.y * K); g.arc(FOUNTAIN.x * K, FOUNTAIN.y * K, (FOUNTAIN.r + 5) * K, 0, 7);
+    g.clip(); g.drawImage(proc, 0, 0, GW, GH); g.restore();
+    return c;
+  }
+
   // ------------------------------------------------------------------ entities
   const world = { houses: {}, trees: {}, props: {}, ground: null };
   const people = [];          // NPCs (agents)
@@ -944,19 +1046,40 @@
 
   /** Pick an integer device-pixel scale, size the world canvas, place the camera. */
   function setView(worldW, worldH, zoom, fx, fy) {
-    S = Math.max(2, Math.round(zoom * dpr));
+    // Pixel art: render at true size, scale by whole device pixels. Painted art: render at device resolution.
+    S = HD ? zoom * dpr : Math.max(2, Math.round(zoom * dpr));
     const vw = Math.ceil(cv.width / S), vh = Math.ceil(cv.height / S);
-    if (lo.width !== vw + 1 || lo.height !== vh + 1) { lo.width = vw + 1; lo.height = vh + 1; lg.imageSmoothingEnabled = false; }
+    const lw = HD ? cv.width : vw + 1, lh = HD ? cv.height : vh + 1;
+    if (lo.width !== lw || lo.height !== lh) { lo.width = lw; lo.height = lh; lg.imageSmoothingEnabled = false; }
     const topPad = Math.ceil((($("toolbar")?.offsetHeight || 0) * dpr) / S); // keep the focus clear of the toolbar
     const avail = vh - topPad;
     camX = worldW <= vw ? -Math.floor((vw - worldW) / 2) : clamp(Math.round(fx - vw / 2), 0, worldW - vw);
     camY = worldH <= avail ? -Math.floor(topPad + (avail - worldH) / 2)
       : clamp(Math.round(fy - topPad - avail / 2), -topPad, worldH - vh);
-    lg.setTransform(1, 0, 0, 1, -camX, -camY);
+    if (HD) lg.setTransform(S, 0, 0, S, -camX * S, -camY * S);
+    else lg.setTransform(1, 0, 0, 1, -camX, -camY);
   }
   const toScreen = (x, y) => [(x - camX) * S, (y - camY) * S];
 
+  const artFor = (p) => ART.characters[p.id] || (p.role === "worker" ? ART.characters.worker : null);
+  function drawPainted(art, p, x, y, opts) {
+    const dir = opts.dir ?? p.dir;
+    let r, c;
+    if (opts.sitting) { if (art.rows >= 5) { r = 4; c = dir === 3 ? 1 : 0; } else { r = dir === 3 ? 3 : 0; c = 0; } }
+    else { r = dir; c = p.frame; }
+    const cell = art.cells[r]?.[c] || art.cells[r]?.[0] || art.cells[0][0];
+    if (!cell) return false;
+    const h = opts.sitting ? CHAR_H * 0.85 : CHAR_H * 1.15, w = (cell.w * h) / cell.h;
+    lg.fillStyle = "rgba(20,20,30,.3)";
+    lg.beginPath(); lg.ellipse(x, y, w * 0.38, 2.2, 0, 0, 7); lg.fill();
+    if (opts.clipY !== undefined) { lg.save(); lg.beginPath(); lg.rect(x - 60, y - 80, 120, opts.clipY - (y - 80)); lg.clip(); }
+    drawArt(art.canvas, cell.x, cell.y, cell.w, cell.h, x - w / 2, y - h + 1, w, h);
+    if (opts.clipY !== undefined) lg.restore();
+    return true;
+  }
   function drawPerson(p, x, y, opts = {}) {
+    const art = artFor(p);
+    if (art && drawPainted(art, p, x, y, opts)) return;
     const blink = ((performance.now() / 1000 + (hash(p.id) % 997) / 97) % 3.7) < 0.13;
     const s = charSprite(lookOf(p), opts.dir ?? p.dir, opts.sitting ? 0 : p.frame, !!opts.sitting, blink);
     lg.fillStyle = "rgba(20,20,30,.28)";
@@ -968,9 +1091,9 @@
 
   function renderTown(now) {
     setView(W * T, H * T, zoomFor(), player.x, player.y - 8);
-    const vw = lo.width, vh = lo.height, t = now / 1000;
+    const vw = lo.width / (HD ? S : 1), vh = lo.height / (HD ? S : 1), t = now / 1000;
     lg.fillStyle = PAL.gDeep; lg.fillRect(camX, camY, vw, vh);
-    lg.drawImage(world.ground, 0, 0);
+    if (world.ground.width > W * T) drawArt(world.ground, 0, 0, W * T, H * T); else lg.drawImage(world.ground, 0, 0);
 
     // fountain water: ripples, sparkles, spout
     const { x: fx, y: fy } = FOUNTAIN;
@@ -1015,9 +1138,19 @@
     const inView = (x, y, m = 48) => x > camX - m && x < camX + vw + m && y > camY - m && y < camY + vh + 80;
     for (const id of Object.keys(LAYOUT)) {
       const b = LAYOUT[id], hs = world.houses[id];
-      items.push({ y: (b.y + b.h) * T, draw: () => { lg.drawImage(hs.canvas, b.x * T - 1, b.y * T - hs.top - 1); houseLive(id, b, t); } });
+      const art = ART.houses[id];
+      if (art) {
+        const w = b.w * T + 6, h = (art.height * w) / art.width;
+        items.push({ y: (b.y + b.h) * T, draw: () => drawArt(art, b.x * T - 3, (b.y + b.h) * T + 3 - h, w, h) });
+      } else items.push({ y: (b.y + b.h) * T, draw: () => { lg.drawImage(hs.canvas, b.x * T - 1, b.y * T - hs.top - 1); houseLive(id, b, t); } });
     }
-    for (const tr of trees) if (inView(tr.x, tr.y)) {
+    const TREE_W = { oak: 36, pine: 28, bush: 20 };
+    for (const tr of trees) if (inView(tr.x, tr.y) && ART.trees[tr.kind]) {
+      const art = ART.trees[tr.kind], w = TREE_W[tr.kind], h = (art.height * w) / art.width;
+      const sway = tr.kind === "bush" ? 0 : Math.sin(t * 1.3 + tr.x * 0.07) * 0.4 + wind * 0.6;
+      items.push({ y: tr.y, draw: () => drawArt(art, tr.x - w / 2 + sway, tr.y + 3 - h, w, h) });
+    }
+    for (const tr of trees) if (inView(tr.x, tr.y) && !ART.trees[tr.kind]) {
       const img = world.trees[tr.kind];
       const dx = tr.x - (img.width >> 1), dy = tr.y - img.height + 3;
       if (tr.kind === "bush") items.push({ y: tr.y, draw: () => lg.drawImage(img, dx, dy) });
@@ -1026,7 +1159,10 @@
         items.push({ y: tr.y, draw: () => { lg.drawImage(img, 0, 24, img.width, img.height - 24, dx, dy + 24, img.width, img.height - 24); lg.drawImage(img, 0, 0, img.width, 24, dx + sway, dy, img.width, 24); } });
       }
     }
+    const PROP_W = { lamp: 12, bench: 30, mailbox: 14, signpost: 18, barrel: 13, crate: 16, pot: 13, well: 26, tripod: 15, suitcase: 14, noticeboard: 20, cart: 22, fence: 17 };
     for (const pr of props) if (inView(pr.x, pr.y)) {
+      const art = ART.props[pr.kind];
+      if (art) { const w = PROP_W[pr.kind] || 16, h = (art.height * w) / art.width; items.push({ y: pr.y, draw: () => drawArt(art, pr.x - w / 2, pr.y + 2 - h, w, h) }); continue; }
       const img = world.props[pr.kind];
       items.push({ y: pr.y, draw: () => lg.drawImage(img, pr.x - 17, pr.y - 28) });
     }
@@ -1152,7 +1288,7 @@
   function blit() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(lo, 0, 0, lo.width * S, lo.height * S);
+    if (HD) ctx.drawImage(lo, 0, 0); else ctx.drawImage(lo, 0, 0, lo.width * S, lo.height * S);
     const key = `${cv.width}x${cv.height}`;
     if (key !== vignetteKey) {
       vignetteKey = key;
@@ -1262,9 +1398,14 @@
     const zoom = Math.min(innerWidth / (ROOM_W + 24), (innerHeight - 80) / (ROOM_H + 24));
     setView(ROOM_W, ROOM_H + 4, Math.max(1.5, zoom), player.x, player.y - 20);
     lg.fillStyle = "#120e18"; lg.fillRect(camX, camY, lo.width, lo.height);
-    lg.drawImage(roomBackdrop(id), 0, 0);
+    const painted = ART.rooms[id];
+    if (painted) { // cover the room, cropping evenly if the painting is not exactly 2:1
+      const k = Math.max(painted.width / ROOM_W, painted.height / (ROOM_H + 4)), sw = ROOM_W * k, sh = (ROOM_H + 4) * k;
+      drawArt(painted, (painted.width - sw) / 2, (painted.height - sh) / 2, sw, sh, 0, 0, ROOM_W, ROOM_H + 4);
+    }
+    else lg.drawImage(roomBackdrop(id), 0, 0);
     // fire
-    for (let i = 0; i < 6; i++) {
+    if (!painted) for (let i = 0; i < 6; i++) {
       const f = Math.sin(t * 11 + i * 1.7) * 2;
       lg.fillStyle = i % 2 ? "#ffb347" : "#ff6b35"; lg.fillRect(ROOM_W / 2 - 8 + i * 3, WALL_H - 10 - f, 3, 8 + f);
       lg.fillStyle = "#ffe08a"; lg.fillRect(ROOM_W / 2 - 7 + i * 3, WALL_H - 5, 1, 3);
@@ -1281,37 +1422,37 @@
       for (const [dx, dy, c] of [[0, -6, "#3d7a3a"], [5, -10, "#4b8c41"], [9, -5, "#3d7a3a"], [3, -3, "#5a9e48"], [7, -8, "#79b85a"]]) P(x + dx, WALL_H + 6 + dy, 5, 5, c);
     } });
     if (id === "town_hall") {
-      items.push({ y: 84, draw: () => {
+      if (!painted) items.push({ y: 84, draw: () => {
         P(62, 66, 116, 18, PAL.out); P(63, 67, 114, 15, "#7a4a2a"); P(63, 67, 114, 3, "#9c6639");
         for (let i = 0; i < 4; i++) { P(70 + i * 28, 72, 12, 7, "#f4ecd8"); P(72 + i * 28, 74, 8, 1, "#9a8a6a"); }
       } });
-      // banner
-      P(ROOM_W / 2 - 8, 3, 16, 3, "#c9a46a");
+      if (!painted) P(ROOM_W / 2 - 8, 3, 16, 3, "#c9a46a"); // banner
       const seats = seatPositions();
       people.filter((p) => p.inHall).forEach((p, i) => {
         const s = seats[i % seats.length];
-        items.push({ y: s.y, draw: () => drawPerson(p, s.x, s.y, { sitting: true, dir: s.dir }) });
+        // behind a painted table, the far side is hidden below the table top
+        items.push({ y: s.y, draw: () => drawPerson(p, s.x, s.y, { sitting: true, dir: s.dir, clipY: painted && s.dir === 0 ? 68 : undefined }) });
       });
     } else {
-      plant(14); plant(ROOM_W - 28);
-      items.push({ y: 80, draw: () => {
+      if (!painted) { plant(14); plant(ROOM_W - 28); }
+      if (!painted) items.push({ y: 80, draw: () => {
         P(96, 66, 48, 14, PAL.out); P(97, 67, 46, 11, "#6a3f22"); P(97, 67, 46, 3, "#8a5631");
         P(112, 58, 16, 10, PAL.out); P(113, 59, 14, 7, "#7fd1ff"); P(114, 60, 4, 1, "#e6f6ff"); P(119, 67, 2, 2, "#3a3a44");
         P(100, 68, 6, 3, "#f4ecd8"); P(134, 66, 4, 4, "#e0485c");
         themedProp(id, t);
       } });
       // blinking server LEDs in the workshop
-      if (id === "workshop") for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) {
+      if (id === "workshop" && !painted) for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) {
         lg.fillStyle = Math.sin(t * (3 + j) + i * 1.7 + j) > 0.2 ? (j % 2 ? "#6fcf7f" : "#f2c230") : "#203028";
         lg.fillRect(150 + j * 5, 12 + i * 5, 2, 2);
       }
       for (const p of people) if (p.role === "director" && p.house === id && p.inside) {
-        items.push({ y: DESK.y, draw: () => drawPerson(p, DESK.x, DESK.y, { sitting: true, dir: 0 }) });
+        items.push({ y: DESK.y, draw: () => drawPerson(p, DESK.x, DESK.y, { sitting: true, dir: 0, clipY: painted ? 63 : undefined }) });
       }
     }
     // live wall-clock hands (real time)
     const d = new Date(), mA = (d.getMinutes() / 60) * Math.PI * 2, hA = ((d.getHours() % 12) / 12) * Math.PI * 2 + mA / 12;
-    lg.fillStyle = PAL.out;
+    lg.fillStyle = painted ? "rgba(0,0,0,0)" : PAL.out;
     for (let k = 0; k < 4; k++) lg.fillRect(Math.round(12.5 + Math.sin(mA) * k), Math.round(12.5 - Math.cos(mA) * k), 1, 1);
     for (let k = 0; k < 3; k++) lg.fillRect(Math.round(12.5 + Math.sin(hA) * k), Math.round(12.5 - Math.cos(hA) * k), 1, 1);
     const c = chief();
@@ -1408,7 +1549,9 @@
     $("chat-name").textContent = p.name;
     $("chat-title").textContent = `${p.title} · ${p.model}${p.connectors?.length ? " · " + p.connectors.join(", ") : ""}`;
     const pc = $("portrait").getContext("2d"); pc.imageSmoothingEnabled = false; pc.clearRect(0, 0, 32, 32);
-    pc.drawImage(charSprite(lookOf(p), 0, 0), 0, 0, SPR_W, 16, 0, 2, 36, 32);
+    const art = artFor(p), cell = art?.cells[0][0];
+    if (cell) { pc.imageSmoothingEnabled = true; const s = cell.w * 0.9; pc.drawImage(art.canvas, cell.x + (cell.w - s) / 2, cell.y, s, s, 0, 0, 36, 36); }
+    else pc.drawImage(charSprite(lookOf(p), 0, 0), 0, 0, SPR_W, 16, 0, 2, 36, 32);
     renderLog();
     $("chat").classList.remove("hidden");
     setTimeout(() => $("chat-input").focus(), 0);
@@ -1642,6 +1785,7 @@
   for (let i = 0; i < 40; i++) fireflies.push({ x: rand() * W * T, y: rand() * H * T, ph: rand() * 6, seed: rand() * 6 });
   player.x = FOUNTAIN.x; player.y = (PLAZA.y + PLAZA.h - 4) * T;
   resize();
+  loadArt();
   refresh().then(() => {
     const c = chief(); if (c) { c.x = player.x + 16; c.y = player.y; }
     let seen = false;

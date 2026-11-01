@@ -69,6 +69,8 @@ class Town:
         for w in self.config.get("workers", []):
             self.agents.append(roster.make_worker(self.agent(w["reports_to"]), w["index"], w["name"]))
         roster.ensure_folders(self.root, self.agents)
+        for kind in ("ground", "houses", "trees", "props", "rooms", "characters"):
+            (self.root / "assets" / kind).mkdir(parents=True, exist_ok=True)
         self._save_json("village.json", self.config)
 
     # ---------------------------------------------------------------- files
