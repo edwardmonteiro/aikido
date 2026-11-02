@@ -6,6 +6,8 @@
       install.sh           creates one Hermes profile per agent, enables the API server
       merge_config.py      merges each profile's village.yaml into its config.yaml
       profiles/<id>/SOUL.md, village.yaml, DESCRIPTION
+      village_install.sh   runs the village itself on the server, behind HTTPS + a password
+      aikido-src.tar.gz    the village code (so the server needs no GitHub access)
       README.md            HTTPS (Caddy) and what to set on your computer
 
 Each profile gets the agent's persona and tool belt, and approvals in
@@ -15,6 +17,7 @@ Each profile gets the agent's persona and tool belt, and approvals in
 from __future__ import annotations
 
 from pathlib import Path
+import tarfile
 from typing import Dict, List, Optional
 
 import yaml
@@ -92,6 +95,77 @@ merge(config, patch)
 open(target, "w").write(yaml.safe_dump(config, sort_keys=False))
 '''
 
+VILLAGE_INSTALL_SH = r"""#!/usr/bin/env bash
+# Agent Village on this server: a service on 127.0.0.1:8765, published by Caddy
+# at https://<your domain> behind a username and password.
+#   bash village_install.sh vila.YOUR-DOMAIN.com
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+DOMAIN="${1:?Usage: bash village_install.sh vila.YOUR-DOMAIN.com}"
+APP=/opt/agent-village
+ENV_FILE="${HERMES_HOME:-$HOME/.hermes}/.env"
+SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO=sudo
+
+command -v caddy >/dev/null || { echo "Install Caddy first (guide step 9)."; exit 1; }
+grep -q "^API_SERVER_KEY=" "$ENV_FILE" 2>/dev/null || { echo "Run install.sh first (no API_SERVER_KEY in $ENV_FILE)."; exit 1; }
+python3 -m venv --help >/dev/null 2>&1 || $SUDO apt-get install -y python3-venv
+
+# 1. the code and its own Python environment
+$SUDO mkdir -p "$APP/src" "$APP/data"
+$SUDO tar xzf "$HERE/aikido-src.tar.gz" -C "$APP/src" --strip-components=1
+[ -x "$APP/.venv/bin/python" ] || $SUDO python3 -m venv "$APP/.venv"
+$SUDO "$APP/.venv/bin/pip" install -q --upgrade "$APP/src"
+
+# 2. the Hermes key, readable only by the service
+KEY="$(grep "^API_SERVER_KEY=" "$ENV_FILE" | cut -d= -f2-)"
+printf 'HERMES_API_KEY=%s\n' "$KEY" | $SUDO tee "$APP/village.env" >/dev/null
+$SUDO chmod 600 "$APP/village.env"
+
+# 3. a service that starts on boot and restarts if it stops
+$SUDO tee /etc/systemd/system/agent-village.service >/dev/null <<UNIT
+[Unit]
+Description=Agent Village
+After=network-online.target
+
+[Service]
+EnvironmentFile=$APP/village.env
+ExecStart=$APP/.venv/bin/aikido village --brain hermes-remote --hermes-url http://127.0.0.1:8642 --root $APP/data --port 8765 --no-open-browser
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+$SUDO systemctl daemon-reload
+$SUDO systemctl enable agent-village
+$SUDO systemctl restart agent-village
+
+# 4. HTTPS + password in Caddy (the password stays on this server; only its hash is stored)
+if ! grep -q "^$DOMAIN " /etc/caddy/Caddyfile 2>/dev/null; then
+  read -rp "Village username: " USERNAME
+  read -rsp "Village password (12+ characters): " PASSWORD; echo
+  [ "${#PASSWORD}" -ge 12 ] || { echo "Use at least 12 characters."; exit 1; }
+  HASH="$(caddy hash-password --plaintext "$PASSWORD")"
+  unset PASSWORD
+  $SUDO tee -a /etc/caddy/Caddyfile >/dev/null <<CADDY
+
+$DOMAIN {
+    basic_auth {
+        $USERNAME $HASH
+    }
+    reverse_proxy 127.0.0.1:8765 {
+        flush_interval -1
+    }
+}
+CADDY
+fi
+$SUDO systemctl reload caddy
+sleep 2
+$SUDO systemctl --no-pager --lines=3 status agent-village || true
+echo
+echo "Open https://$DOMAIN and sign in with the username and password you chose."
+"""
+
 README = """# Agent Village on your Hermes server
 
 1. Copy this folder to the server (hPanel file manager, `scp -r hermes-village user@server:`), then run:
@@ -115,7 +189,14 @@ README = """# Agent Village on your Hermes server
 
 3. Restart the gateway: `hermes gateway restart` (or `hermes gateway run`).
 
-4. On your computer:
+4. Run the village on this server too, behind a password:
+
+       bash village_install.sh vila.YOUR-DOMAIN.com
+
+   (Point an A record for vila.YOUR-DOMAIN.com at the VPS IP first.)
+   Then open https://vila.YOUR-DOMAIN.com from any device.
+
+   Or, instead, run it on your computer:
 
        export HERMES_URL=https://hermes.YOUR-DOMAIN.com
        export HERMES_API_KEY=<the key from step 1>
@@ -159,5 +240,25 @@ def export_bundle(out: Path, agents: Optional[List[roster.Agent]] = None, mcp: O
     (out / "install.sh").write_text(INSTALL_SH)
     (out / "install.sh").chmod(0o755)
     (out / "merge_config.py").write_text(MERGE_PY)
+    (out / "village_install.sh").write_text(VILLAGE_INSTALL_SH)
+    (out / "village_install.sh").chmod(0o755)
+    _pack_source(out / "aikido-src.tar.gz")
     (out / "README.md").write_text(README)
     return out
+
+
+def _pack_source(dest: Path) -> None:
+    """Bundle this checkout's code (pyproject + src) so the server needs no GitHub access."""
+    root = Path(__file__).resolve().parents[3]
+    if not (root / "pyproject.toml").exists():
+        return  # installed from a wheel: nothing to pack
+    skip = {"__pycache__", ".pytest_cache"}
+
+    def keep(info: tarfile.TarInfo):
+        parts = Path(info.name).parts
+        return None if any(p in skip for p in parts) or info.name.endswith(".pyc") else info
+
+    with tarfile.open(dest, "w:gz") as tar:
+        for name in ("pyproject.toml", "README.md", "LICENSE", "src"):
+            if (root / name).exists():
+                tar.add(root / name, arcname=f"aikido/{name}", filter=keep)

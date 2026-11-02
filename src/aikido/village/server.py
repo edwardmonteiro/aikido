@@ -78,8 +78,9 @@ def make_handler(town: Town):
 
         def do_POST(self):
             # Same-origin only: a page on another site can't drive your agents.
-            origin = self.headers.get("Origin")
-            if origin and origin != f"http://{self.headers.get('Host')}":
+            # https covers running behind an HTTPS reverse proxy (Caddy keeps the Host header).
+            origin, host = self.headers.get("Origin"), self.headers.get("Host")
+            if origin and origin not in (f"http://{host}", f"https://{host}"):
                 return self._json(403, {"error": "cross-origin request refused"})
             try:
                 code, data = self._route(self.path, self._body())

@@ -137,6 +137,10 @@ def test_http_api(tmp_path):
             post("/api/sync", {"a": "x", "b": "y"}, {"Origin": "http://evil.example"})
         assert err.value.code == 403
 
+        # behind an HTTPS reverse proxy the browser sends an https Origin for the same host
+        host = f"127.0.0.1:{httpd.server_address[1]}"
+        assert post("/api/sync", {"a": "chief_of_staff", "b": "finance"}, {"Origin": f"https://{host}"})["a"] == "chief_of_staff"
+
         with pytest.raises(urllib.error.HTTPError) as err:
             urllib.request.urlopen(base + "/files/../../etc/passwd")
         assert err.value.code == 404
@@ -308,3 +312,6 @@ def test_server_setup_bundle(tmp_path):
     assert fin["platform_toolsets"]["api_server"] == ["memory", "todo", "skills", "web"] and fin["mcp_servers"] == {}
     assert "Money Director" in (out / "profiles" / "finance" / "SOUL.md").read_text()
     assert "API_SERVER_KEY" in (out / "install.sh").read_text()
+    village = (out / "village_install.sh").read_text()
+    assert "basic_auth" in village and "127.0.0.1:8765" in village and "--brain hermes-remote" in village
+    assert (out / "aikido-src.tar.gz").exists()
