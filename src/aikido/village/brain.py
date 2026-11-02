@@ -269,3 +269,100 @@ class HermesBrain:
         }
         with (home.parent / "decisions.jsonl").open("a") as fh:
             fh.write(json.dumps(entry) + "\n")
+
+
+class RemoteHermesBrain:
+    """Agents run on a Hermes Agent server (e.g. a VPS) via its runs API.
+
+    Every agent is its own profile on the server, reached at
+    ``<url>/p/<profile>/v1/runs`` (the gateway needs ``multiplex_profiles``).
+    Unlike one-shot mode, server runs pause on risky tool calls and wait for
+    an approval; ``approver`` decides (the village asks you in Review).
+    """
+
+    name = "hermes-remote"
+
+    def __init__(self, url: str, api_key: str, timeout: int = 900, approver=None, session=None):
+        import requests
+
+        self.url = url.rstrip("/")
+        self.api_key = api_key
+        self.timeout = timeout
+        self.approver = approver  # fn(agent, event) -> "once" | "session" | "deny"
+        self.http = session or requests.Session()
+
+    def _headers(self, agent: Agent) -> dict:
+        return {"Authorization": f"Bearer {self.api_key}", "X-Hermes-Session-Key": f"village-{agent.id}"}
+
+    @staticmethod
+    def profile(agent: Agent) -> str:
+        """Interns share their director's profile (with their own memory scope)."""
+        return agent.reports_to if agent.role == "worker" and agent.reports_to else agent.id
+
+    def health(self) -> dict:
+        r = self.http.get(f"{self.url}/health", timeout=10)
+        r.raise_for_status()
+        return r.json() if r.content else {}
+
+    def toolsets(self, agent: Agent) -> List[str]:
+        """The tools the server actually gives this agent (read-only view)."""
+        r = self.http.get(f"{self.url}/p/{self.profile(agent)}/v1/toolsets", headers=self._headers(agent), timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        rows = data.get("toolsets", data.get("data", [])) if isinstance(data, dict) else data
+        return [t.get("name") for t in rows if isinstance(t, dict) and t.get("enabled")]
+
+    def think(self, agent: Agent, system: str, prompt: str, cwd: Path, model: Optional[str] = None) -> str:
+        base = f"{self.url}/p/{self.profile(agent)}/v1/runs"
+        started = datetime.now()
+        r = self.http.post(base, json={"input": prompt, "instructions": system}, headers=self._headers(agent), timeout=30)
+        if r.status_code == 404:
+            raise RuntimeError(f"The Hermes server has no profile '{self.profile(agent)}'. Run the village setup on the server.")
+        r.raise_for_status()
+        run_id = r.json()["run_id"]
+        output, usage, error, approvals = None, {}, None, []
+        with self.http.get(f"{base}/{run_id}/events", headers=self._headers(agent), stream=True, timeout=self.timeout) as events:
+            events.raise_for_status()
+            # chunk_size=1: hand each event over as soon as it arrives. With the default
+            # buffer an approval request could sit unread while the run waits for it.
+            for raw in events.iter_lines(chunk_size=1, decode_unicode=True):
+                if not raw or not raw.startswith("data:"):
+                    continue
+                try:
+                    event = json.loads(raw[5:].strip())
+                except ValueError:
+                    continue
+                kind = event.get("event")
+                if kind == "approval.request":
+                    choice = self.approver(agent, event) if self.approver else "deny"
+                    if choice not in event.get("choices", ["once", "deny"]):
+                        choice = "deny"
+                    approvals.append({"what": str(event.get("command") or event.get("description") or "")[:200], "choice": choice})
+                    self.http.post(f"{base}/{run_id}/approval", json={"choice": choice}, headers=self._headers(agent), timeout=30)
+                elif kind == "run.completed":
+                    output, usage = event.get("output") or "", event.get("usage") or {}
+                    break
+                elif kind in ("run.failed", "run.cancelled"):
+                    error = event.get("error") or kind
+                    break
+        if output is None and error is None:  # stream closed early: ask for the final status
+            status = self.http.get(f"{base}/{run_id}", headers=self._headers(agent), timeout=30).json()
+            output, error, usage = status.get("output"), status.get("error"), status.get("usage") or {}
+            if output is None and error is None:
+                error = f"run ended with status {status.get('status')}"
+        entry = {
+            "at": started.strftime("%Y-%m-%d %H:%M:%S"),
+            "model": f"server profile {self.profile(agent)}",
+            "tools": [],
+            "approvals": approvals,
+            "prompt": prompt[:300],
+            "reply": (output or error or "")[:300],
+            "ok": error is None,
+            "api_calls": usage.get("api_calls"),
+            "cost_usd": usage.get("estimated_cost_usd"),
+        }
+        with (cwd / "decisions.jsonl").open("a") as fh:
+            fh.write(json.dumps(entry) + "\n")
+        if error is not None:
+            raise RuntimeError(str(error)[:500])
+        return output.strip()

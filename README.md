@@ -158,6 +158,23 @@ each run's model, tools, API calls and estimated cost
 in `village/village.json` under `hermes.mcp.gmail.url`. GitHub uses
 `GITHUB_TOKEN`.
 
+**Your own Hermes server (e.g. a Hostinger VPS).** Run the agents on a
+Hermes Agent server instead of your computer:
+
+```bash
+aikido village --hermes-setup hermes-village   # 1. build the server setup folder
+# 2. copy it to the server and run:  bash install.sh   (one profile per agent + API server + key)
+# 3. put HTTPS in front (Caddy snippet in hermes-village/README.md), restart: hermes gateway restart
+export HERMES_URL=https://hermes.your-domain.com HERMES_API_KEY=<key from install.sh>
+aikido village --brain hermes-remote             # 4. play
+```
+
+Each agent is its own server profile (`/p/<agent>/v1/runs`), with its own
+persona, memory and tool belt. Approvals are in manual mode, so when an agent
+wants a risky tool its run pauses and you **Allow once**, **Allow for this
+task** or **Deny** in Review. "Always" is never offered. Unanswered requests
+are denied after 10 minutes.
+
 **Connectors.** Iris (Inbox) can search and read Gmail and save drafts. Ezra
 (Code) can read GitHub repositories, issues, pull requests and commits. By default
 they use the tool names the `claude` CLI gives a claude.ai Gmail connector

@@ -1063,7 +1063,10 @@
       };
       box.appendChild(b);
     }
-    $("belt-note").textContent = roster.brain === "hermes" ? "Hermes agent · tools apply on the next task" : roster.brain === "claude" ? "Tools take full effect with the Hermes brain" : "";
+    const remote = roster.brain === "hermes-remote";
+    box.querySelectorAll(".tool").forEach((b) => (b.disabled = remote));
+    $("belt-note").textContent = remote ? "Tools are set on your Hermes server · risky ones ask for your OK in Review"
+      : roster.brain === "hermes" ? "Hermes agent · tools apply on the next task" : roster.brain === "claude" ? "Tools take full effect with the Hermes brain" : "";
   }
   $("decisions-btn").addEventListener("click", async () => {
     if (!chatWith) return;
@@ -1166,10 +1169,24 @@
 
   // ------------------------------------------------------------------ UI: review
   $("review-btn").addEventListener("click", () => { renderReview(); $("review").classList.toggle("hidden"); });
+  const CHOICE_LABEL = { once: "Allow once", session: "Allow for this task", deny: "Deny" };
   function renderReview() {
     const list = $("review-list"); list.innerHTML = "";
+    for (const ap of roster.approvals || []) {
+      const who = roster.agents.find((a) => a.id === ap.agent);
+      const el = document.createElement("div"); el.className = "item approval";
+      el.innerHTML = `<div><span class="status pending_review">needs approval</span> <b></b></div><pre class="what"></pre><div class="row"></div>`;
+      el.querySelector("b").textContent = `${who ? who.name : ap.agent} wants to run a tool`;
+      el.querySelector(".what").textContent = ap.what;
+      for (const choice of ap.choices) {
+        const b = document.createElement("button"); b.className = choice === "deny" ? "bad" : "good"; b.textContent = CHOICE_LABEL[choice] || choice;
+        b.onclick = async () => { b.disabled = true; try { await api("/api/approval", { id: ap.id, choice }); toast(`${CHOICE_LABEL[choice] || choice}: ${who ? who.name : ap.agent}`); } catch (err) { toast(err.message, true); } await refresh(); renderReview(); };
+        el.querySelector(".row").appendChild(b);
+      }
+      list.appendChild(el);
+    }
     const items = [...roster.review].reverse();
-    if (!items.length) list.innerHTML = '<p class="muted">No deliverables yet. Give your Chief of Staff a to-do.</p>';
+    if (!items.length && !(roster.approvals || []).length) list.innerHTML = '<p class="muted">No deliverables yet. Give your Chief of Staff a to-do.</p>';
     for (const it of items) {
       const who = roster.agents.find((a) => a.id === it.agent);
       const el = document.createElement("div"); el.className = "item";
@@ -1273,12 +1290,22 @@
   }
 
   // ------------------------------------------------------------------ boot
+  let knownApprovals = new Set();
   async function refresh() {
     roster = await api("/api/state");
-    $("brain").textContent = roster.brain_label || ({ claude: "Claude CLI", hermes: "Hermes" }[roster.brain] || "offline");
+    $("brain").textContent = roster.brain_label || ({ claude: "Claude CLI", hermes: "Hermes", "hermes-remote": "Hermes server" }[roster.brain] || "offline");
+    if (roster.brain === "hermes-remote" && !refresh.polling) refresh.polling = setInterval(() => refresh().catch(() => {}), 4000);
     $("brain").className = "badge " + roster.brain;
     $("brain").title = { claude: "Agents think with your local claude CLI", hermes: "Each agent is its own Hermes Agent" }[roster.brain] || "No AI available here, placeholder replies";
-    const pending = roster.review.filter((r) => r.status === "pending_review").length;
+    const seenApprovals = new Set((roster.approvals || []).map((a) => a.id));
+    for (const ap of roster.approvals || []) if (!knownApprovals.has(ap.id)) {
+      const who = people.find((p) => p.id === ap.agent);
+      if (who) who.bubble = { text: "Needs your OK!", until: performance.now() + 8000 };
+      toast(`${who ? who.name : ap.agent} needs your approval. Open Review.`);
+    }
+    knownApprovals = seenApprovals;
+    if (!$("review").classList.contains("hidden")) renderReview();
+    const pending = roster.review.filter((r) => r.status === "pending_review").length + seenApprovals.size;
     $("review-count").textContent = pending; $("review-count").hidden = !pending;
     $("guardrails").innerHTML = "";
     for (const g of roster.guardrails) { const li = document.createElement("li"); li.textContent = g; $("guardrails").appendChild(li); }

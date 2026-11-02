@@ -408,6 +408,8 @@
 <span class="tok-p">$</span> aikido village --port 9000 --chief Ana
 <span class="tok-p">$</span> aikido village --offline --no-open-browser
 <span class="tok-p">$</span> aikido village --brain hermes
+<span class="tok-p">$</span> aikido village --hermes-setup hermes-village
+<span class="tok-p">$</span> aikido village --brain hermes-remote --hermes-url https://hermes.example.com
 </code></pre>
     <div class="table-wrap"><table>
       <thead><tr><th>Argument / Option</th><th>Default</th><th>Description</th></tr></thead>
@@ -430,7 +432,17 @@
         <tr>
           <td><code>--brain</code></td>
           <td><code>auto</code></td>
-          <td><code>auto</code> or <code>claude</code> (local claude CLI), <code>hermes</code> (one Hermes Agent profile per agent) or <code>offline</code></td>
+          <td><code>auto</code> or <code>claude</code> (local claude CLI), <code>hermes</code> (local Hermes Agent per agent), <code>hermes-remote</code> (your Hermes server) or <code>offline</code></td>
+        </tr>
+        <tr>
+          <td><code>--hermes-url</code></td>
+          <td>—</td>
+          <td>Your Hermes server, e.g. <code>https://hermes.example.com</code> (or set <code>HERMES_URL</code>); the key comes from <code>HERMES_API_KEY</code></td>
+        </tr>
+        <tr>
+          <td><code>--hermes-setup</code></td>
+          <td>—</td>
+          <td>Write the server setup folder (profiles + install.sh) to this path and exit</td>
         </tr>
         <tr>
           <td><code>--chief</code></td>

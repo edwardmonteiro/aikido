@@ -205,6 +205,8 @@ def village(
     root: Optional[str] = None,
     offline: bool = False,
     brain: str = "auto",
+    hermes_url: Optional[str] = None,
+    hermes_setup: Optional[str] = None,
     chief: str = "Matt",
     open_browser: bool = True,
 ) -> None:
@@ -220,28 +222,51 @@ def village(
 
     import os
 
-    from aikido.village.brain import ClaudeBrain, HermesBrain, OfflineBrain
+    from aikido.village.brain import ClaudeBrain, HermesBrain, OfflineBrain, RemoteHermesBrain
     from aikido.village.server import serve
     from aikido.village.town import Town
 
     project = cfg.find_project_root()
     village_root = Path(root) if root else (project or Path.cwd()) / "village"
+    settings = {}
+    if (village_root / "village.json").exists():
+        import json
+
+        settings = json.loads((village_root / "village.json").read_text()).get("hermes", {})
+    if hermes_setup:
+        from aikido.village.hermes_setup import export_bundle
+
+        out = export_bundle(Path(hermes_setup), mcp=settings.get("mcp"))
+        console.print(f"[green]Hermes server setup written to[/green] {out}")
+        console.print(f"Copy it to your server and run `bash install.sh` there. Steps: {out / 'README.md'}")
+        return
+
     choice = "offline" if offline else brain
-    if choice not in ("auto", "claude", "hermes", "offline"):
-        console.print("[red]--brain must be auto, claude, hermes or offline.[/red]")
+    if choice not in ("auto", "claude", "hermes", "hermes-remote", "offline"):
+        console.print("[red]--brain must be auto, claude, hermes, hermes-remote or offline.[/red]")
         raise typer.Exit(code=1)
-    if choice == "hermes":
+    if choice == "hermes-remote":
+        url = hermes_url or os.environ.get("HERMES_URL") or settings.get("url")
+        key = os.environ.get("HERMES_API_KEY", "")
+        if not url or not key:
+            console.print("[red]Set HERMES_URL (or --hermes-url) and HERMES_API_KEY for your Hermes server.[/red]")
+            raise typer.Exit(code=1)
+        if url.startswith("http://") and not any(h in url for h in ("127.0.0.1", "localhost")):
+            console.print("[red]Use https:// for a remote Hermes server: the API key would travel in clear text.[/red]")
+            raise typer.Exit(code=1)
+        mind = RemoteHermesBrain(url, key)
+        try:
+            mind.health()
+        except Exception as exc:  # report and stop: a village with no brain is not useful
+            console.print(f"[red]Can't reach the Hermes server at {url}:[/red] {exc}")
+            raise typer.Exit(code=1)
+    elif choice == "hermes":
         if not HermesBrain.available():
             console.print("[red]`hermes` not found.[/red] Install it with `pip install hermes-agent`.")
             raise typer.Exit(code=1)
         if not (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or os.environ.get("ANTHROPIC_TOKEN") or os.environ.get("ANTHROPIC_API_KEY")):
             console.print("[yellow]No Claude credential in the environment.[/yellow] Run `claude setup-token` and "
                           "export CLAUDE_CODE_OAUTH_TOKEN before starting the village.")
-        settings = {}
-        if (village_root / "village.json").exists():
-            import json
-
-            settings = json.loads((village_root / "village.json").read_text()).get("hermes", {})
         mind = HermesBrain(provider=settings.get("provider", "anthropic"), mcp=settings.get("mcp"))
     elif choice in ("auto", "claude") and ClaudeBrain.available():
         mind = ClaudeBrain(extra_dirs=[project] if project else [])

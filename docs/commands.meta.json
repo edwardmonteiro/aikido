@@ -158,13 +158,17 @@
         "aikido village",
         "aikido village --port 9000 --chief Ana",
         "aikido village --offline --no-open-browser",
-        "aikido village --brain hermes"
+        "aikido village --brain hermes",
+        "aikido village --hermes-setup hermes-village",
+        "aikido village --brain hermes-remote --hermes-url https://hermes.example.com"
       ],
       "params": {
         "--port": "Local port (the server binds to 127.0.0.1 only)",
         "--root": "Where agent folders, notes and deliverables live",
         "--offline": "Skip the `claude` CLI and use placeholder replies",
-        "--brain": "`auto` or `claude` (local claude CLI), `hermes` (one Hermes Agent profile per agent) or `offline`",
+        "--brain": "`auto` or `claude` (local claude CLI), `hermes` (local Hermes Agent per agent), `hermes-remote` (your Hermes server) or `offline`",
+        "--hermes-url": "Your Hermes server, e.g. `https://hermes.example.com` (or set `HERMES_URL`); the key comes from `HERMES_API_KEY`",
+        "--hermes-setup": "Write the server setup folder (profiles + install.sh) to this path and exit",
         "--chief": "Your Chief of Staff's name",
         "--open-browser": "Open the village in your browser on start"
       },

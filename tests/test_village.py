@@ -216,3 +216,95 @@ print("HTTP 401: OAuth access token is invalid.")
     job = _wait(town, town.submit("chat", town.chat, "finance", "hello"))
     assert job["status"] == "error" and "401" in job["error"]
     assert town.decisions("finance")[0]["ok"] is False
+
+
+def _fake_hermes_server():
+    """A tiny stand-in for the Hermes runs API: one run that asks for approval, then completes."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    seen = {"choice": None, "auth": None, "profile": None, "approved": threading.Event()}
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _json(self, code, data):
+            body = json.dumps(data).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path == "/health":
+                return self._json(200, {"status": "ok"})
+            if self.path.endswith("/events"):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                ask = {"event": "approval.request", "command": "rm -rf /tmp/scratch", "choices": ["once", "session", "always", "deny"]}
+                self.wfile.write(f"data: {json.dumps(ask)}\n\n".encode()); self.wfile.flush()
+                seen["approved"].wait(5)
+                done = {"event": "run.completed", "output": f"done ({seen['choice']})", "usage": {"api_calls": 3}}
+                self.wfile.write(f"data: {json.dumps(done)}\n\n".encode()); self.wfile.flush()
+                return
+            self._json(404, {})
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+            if self.path.endswith("/v1/runs"):
+                seen["auth"] = self.headers.get("Authorization")
+                seen["profile"] = self.path.split("/")[2]
+                return self._json(202, {"run_id": "run_1", "status": "started"})
+            if self.path.endswith("/approval"):
+                seen["choice"] = body["choice"]
+                seen["approved"].set()
+                return self._json(200, {"ok": True})
+            self._json(404, {})
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, seen
+
+
+def test_remote_hermes_pauses_for_the_users_approval(tmp_path):
+    from aikido.village.brain import RemoteHermesBrain
+
+    srv, seen = _fake_hermes_server()
+    try:
+        url = f"http://127.0.0.1:{srv.server_address[1]}"
+        town = Town(tmp_path, RemoteHermesBrain(url, "secret"))
+        job_id = town.submit("chat", town.chat, "finance", "Tidy the scratch folder")
+        deadline = time.time() + 5
+        while not town.state()["approvals"] and time.time() < deadline:
+            time.sleep(0.02)
+        pending = town.state()["approvals"]
+        assert len(pending) == 1 and "rm -rf" in pending[0]["what"] and "always" not in pending[0]["choices"]
+        with pytest.raises(ValueError):
+            town.resolve_approval(pending[0]["id"], "always")  # permanent allow is never offered
+        town.resolve_approval(pending[0]["id"], "once")
+        job = _wait(town, job_id)
+        assert job["status"] == "done" and job["result"]["reply"] == "done (once)"
+        assert seen["auth"] == "Bearer secret" and seen["profile"] == "finance"
+        log = town.decisions("finance")[0]
+        assert log["ok"] and log["approvals"][0]["choice"] == "once" and log["api_calls"] == 3
+    finally:
+        srv.shutdown()
+
+
+def test_server_setup_bundle(tmp_path):
+    import yaml as _yaml
+
+    from aikido.village.hermes_setup import export_bundle
+
+    out = export_bundle(tmp_path / "b")
+    names = sorted(p.name for p in (out / "profiles").iterdir())
+    assert names == sorted(a.id for a in roster.default_roster())
+    eng = _yaml.safe_load((out / "profiles" / "engineering" / "village.yaml").read_text())
+    assert eng["approvals"]["mode"] == "manual" and "github" in eng["mcp_servers"]
+    assert "terminal" not in eng["platform_toolsets"]["api_server"]
+    fin = _yaml.safe_load((out / "profiles" / "finance" / "village.yaml").read_text())
+    assert fin["platform_toolsets"]["api_server"] == ["memory", "todo", "skills", "web"] and fin["mcp_servers"] == {}
+    assert "Money Director" in (out / "profiles" / "finance" / "SOUL.md").read_text()
+    assert "API_SERVER_KEY" in (out / "install.sh").read_text()

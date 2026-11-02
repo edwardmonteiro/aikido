@@ -61,6 +61,9 @@ class Town:
         self.lock = threading.RLock()
         self.pool = ThreadPoolExecutor(max_workers=4)
         self.jobs: Dict[str, dict] = {}
+        self.approvals: Dict[str, dict] = {}
+        if hasattr(brain, "approver"):
+            brain.approver = self.request_approval
         self.root.mkdir(parents=True, exist_ok=True)
         self.config = self._load_json("village.json", {"chief_name": chief_name, "workers": [], "connector_tools": {}})
         self.agents: List[roster.Agent] = roster.default_roster(self.config.get("chief_name", chief_name))
@@ -116,6 +119,7 @@ class Town:
         return {
             "brain": self.brain.name,
             "toolsets": roster.HERMES_TOOLSETS,
+            "approvals": [{k: v for k, v in a.items() if k != "_done"} for a in self.approvals.values() if a["status"] == "pending"],
             "agents": [a.to_dict() for a in self.agents],
             "houses": [h.to_dict() for h in roster.HOUSES],
             "review": self._load_json("review.json", []),
@@ -247,6 +251,34 @@ class Town:
         free = [c for c in CANDIDATE_POOL if c[0] not in taken]
         self.remember("chief_of_staff", f"Sourced {min(count, len(free))} candidates for {director.name}.")
         return [{"name": n, "pitch": p, "director": director_id} for n, p in free[:count]]
+
+    # ---------------------------------------------------------------- approvals
+    def request_approval(self, agent: roster.Agent, event: dict, timeout: float = 600) -> str:
+        """A server-side run wants a risky tool. Block that run until the user decides (deny on timeout)."""
+        approval_id = uuid.uuid4().hex[:12]
+        what = str(event.get("command") or event.get("description") or event.get("tool") or "a tool call")
+        entry = {
+            "id": approval_id, "agent": agent.id, "what": what[:500],
+            "choices": [c for c in event.get("choices", ["once", "deny"]) if c in ("once", "session", "deny")],
+            "created": _now(), "status": "pending", "choice": None, "_done": threading.Event(),
+        }
+        self.approvals[approval_id] = entry
+        self.remember(agent.id, f"Asked the user to approve: {what[:160]}")
+        if not entry["_done"].wait(timeout):
+            entry["choice"] = "deny"
+        entry["status"] = "resolved"
+        self.remember(agent.id, f"The user's decision on {what[:80]!r}: {entry['choice']}.")
+        return entry["choice"]
+
+    def resolve_approval(self, approval_id: str, choice: str) -> dict:
+        entry = self.approvals[approval_id]
+        if entry["status"] != "pending":
+            raise ValueError("This approval was already decided.")
+        if choice not in entry["choices"]:
+            raise ValueError(f"choice must be one of {entry['choices']}")
+        entry["choice"] = choice
+        entry["_done"].set()
+        return {k: v for k, v in entry.items() if k != "_done"}
 
     # ---------------------------------------------------------------- tool belts
     def set_tool(self, agent_id: str, toolset: str, enabled: bool) -> dict:

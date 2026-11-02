@@ -14,6 +14,7 @@ Bound to 127.0.0.1 only — the village is a local app, never exposed.
     GET  /files/<path>                  deliverables (md / pdf) under the village root
     GET  /api/decisions/<agent>         the agent's recent Hermes runs (model, tools, cost)
     POST /api/tools    {agent, toolset, enabled}   switch a tool on the agent's belt
+    POST /api/approval {id, choice}     allow ("once" / "session") or "deny" a paused server run
 """
 
 from __future__ import annotations
@@ -101,6 +102,8 @@ def make_handler(town: Town):
                 return 200, town.review(body["id"], body["decision"])
             if path == "/api/candidates":
                 return 200, {"candidates": town.candidates(body["director"])}
+            if path == "/api/approval":
+                return 200, town.resolve_approval(str(body["id"]), str(body["choice"]))
             if path == "/api/tools":
                 return 200, town.set_tool(body["agent"], str(body["toolset"]), body.get("enabled") is True)
             if path == "/api/hire":
