@@ -6,3 +6,6 @@ dist/
 .pytest_cache/
 .venv/
 venv/
+
+# Agent Village data created by `aikido village` outside a project
+/village/

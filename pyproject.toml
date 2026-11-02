@@ -33,6 +33,7 @@ packages = ["src/aikido"]
 artifacts = [
     "src/aikido/data/**/*.md",
     "src/aikido/data/**/*.json",
+    "src/aikido/village/static/*",
 ]
 
 [tool.pytest.ini_options]

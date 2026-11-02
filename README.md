@@ -86,6 +86,7 @@ contract validated.
 | `aikido dashboard` | Knowledge-system health dashboard |
 | `aikido validate` | Check broken includes, undefined variables, contract mismatches, stale files |
 | `aikido config` | Manage `.aikido/config.yaml` |
+| `aikido village` | Open the Agent Village — a local RPG town where your AI agents live and work |
 
 ## The transpiler
 
@@ -98,6 +99,105 @@ contract validated.
    (word counts, no generic filler).
 
 On success the artifact is written to `06_dist/{agent}_{week}.md`.
+
+## Agent Village
+
+```bash
+aikido village            # opens http://127.0.0.1:8765/
+```
+
+A top-down 16-bit town that runs locally in your browser. Ten buildings sit
+around a town square with a fountain. Your **Chief of Staff** (Matt by default)
+follows you around, takes to-dos from the toolbar and routes each one to one of
+seven **directors**:
+
+| Director | House | Domain |
+| --- | --- | --- |
+| Iris | Inbox House | email and calendar (drafts only) |
+| Cole | Content Studio | video and social scripts (never publishes) |
+| Penny | Money House | budgets, cash flow, treasury and covenant checks (never moves money) |
+| Reed | Research Library | research reports |
+| Tess | Travel Lodge | itineraries (never books) |
+| Ezra | Code Workshop | specs, scripts, reviews |
+| Kai | Knowledge Archive | this aikido knowledge base |
+
+- **No API keys.** Every agent thinks through your local `claude` CLI in
+  headless mode, on your Claude subscription. The Chief of Staff and directors
+  run Opus, directors can escalate a complex edge-case to an advisor model, and
+  hired interns run Sonnet. Without the CLI the village runs offline with
+  placeholder replies.
+- **Memory.** Each agent has `village/agents/<id>/identity.md` and a persistent
+  `notes.md`. When two interns bump into each other in town, they swap status
+  and both write it down.
+- **Deliverables.** Finished work is saved as Markdown and PDF and lands in the
+  **Review** queue. Nothing is acted on until you approve it.
+- **Controls.** Arrow keys or WASD to walk, Shift to run, walk into a door to go
+  inside. `T` talks to whoever is next to you, double-tap `M` talks to the
+  Chief of Staff from anywhere ("call Penny" makes Penny walk over), **Meeting**
+  gathers every director at the Town Hall table, and `G` shows the navigation
+  mesh.
+- **Guardrails, enforced in code.** Each agent call is limited to file tools in
+  the agent's own folder (`--tools`, `--allowedTools`,
+  `--permission-mode dontAsk`). Connector tools whose names suggest sending,
+  posting, paying, trading, sharing or deleting are never granted. Interns only
+  spawn after you interview and approve them (`approved_by_human`). The server
+  binds to `127.0.0.1` and refuses cross-origin requests.
+
+**Hermes brain.** `aikido village --brain hermes` gives every agent its own
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) (Nous Research)
+profile in `village/agents/<id>/hermes/`: its own `SOUL.md` persona, memory,
+skills and tool belt. Hermes runs on Claude through your subscription token:
+`pip install "hermes-agent[anthropic]"`, `claude setup-token`, then export
+`CLAUDE_CODE_OAUTH_TOKEN`. Hermes one-shot mode auto-approves tool calls, so
+the tool belt is the boundary. Agents only ever get memory, todo, skills,
+session search, web search, and read-or-draft Gmail/GitHub. Terminal, code
+execution, browser and computer control, cron jobs and delegation are never
+available. Talk to an agent to switch tools on its belt. **Decisions** shows
+each run's model, tools, API calls and estimated cost
+(`village/agents/<id>/decisions.jsonl`). Point the Gmail MCP server at a URL
+in `village/village.json` under `hermes.mcp.gmail.url`. GitHub uses
+`GITHUB_TOKEN`.
+
+**Your own Hermes server (e.g. a Hostinger VPS).** Run the agents on a
+Hermes Agent server instead of your computer:
+
+```bash
+aikido village --hermes-setup hermes-village   # 1. build the server setup folder
+# 2. copy it to the server and run:  bash install.sh   (one profile per agent + API server + key)
+# 3. put HTTPS in front (Caddy snippet in hermes-village/README.md), restart: hermes gateway restart
+export HERMES_URL=https://hermes.your-domain.com HERMES_API_KEY=<key from install.sh>
+aikido village --brain hermes-remote             # 4. play
+```
+
+Each agent is its own server profile (`/p/<agent>/v1/runs`), with its own
+persona, memory and tool belt. Approvals are in manual mode, so when an agent
+wants a risky tool its run pauses and you **Allow once**, **Allow for this
+task** or **Deny** in Review. "Always" is never offered. Unanswered requests
+are denied after 10 minutes.
+
+**Connectors.** Iris (Inbox) can search and read Gmail and save drafts. Ezra
+(Code) can read GitHub repositories, issues, pull requests and commits. By default
+they use the tool names the `claude` CLI gives a claude.ai Gmail connector
+(`mcp__claude_ai_Gmail__*`) and a GitHub MCP server (`mcp__github__*`). Point them
+at other names in `village/village.json`:
+
+```json
+{ "connector_tools": { "inbox": ["mcp__Gmail__create_draft", "mcp__Gmail__search_threads"] } }
+```
+
+Tools whose names suggest sending, posting, paying, trading, sharing or deleting
+are dropped before they reach the CLI, whatever the config says.
+
+Everything is drawn in code in Atari 2600 style at true pixel size and scaled by whole device pixels,
+so the art stays crisp on any screen. There are no image assets and no
+image-generation credits to spend. The village has touch controls on phones and
+a day/night cycle that follows your clock (try `?hour=21`), plus a pond with ducks, butterflies,
+fireflies, CRT scanlines and a minimap.
+
+![The village](docs/img/village-town.png)
+![Penny's tool belt](docs/img/village-toolbelt.png)
+![Town Hall meeting](docs/img/village-interior.png)
+![The square at night](docs/img/village-night.png)
 
 ## Development
 
