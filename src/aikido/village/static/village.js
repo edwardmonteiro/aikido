@@ -1,10 +1,9 @@
-/* Agent Village — a top-down 16-bit town where your AI agents live and work.
+/* Agent Village — an Atari 2600-style town where your AI agents live and work.
  *
- * Everything is drawn in code on a <canvas>: no image assets, no credits.
- * The world renders at its true pixel size into a small offscreen canvas and
- * is blown up by a whole number of *device* pixels, so every art pixel is a
- * crisp square on any screen; text (name tags, bubbles) is drawn afterwards
- * at full screen resolution.
+ * Everything is drawn in code on a <canvas> with the 2600's NTSC palette:
+ * 8-pixel-wide sprites, a striped playfield, stepped shapes and CRT
+ * scanlines. The world renders at its true size into a small offscreen canvas
+ * and is scaled by whole device pixels; text is drawn on top at full resolution.
  *
  * The server (aikido village) — or a page-supplied VILLAGE_BACKEND — owns the
  * agents' brains, memory and guardrails; this file is the world, the controls
@@ -18,42 +17,65 @@
   const W = 64, H = 44;         // map size, tiles
   const WALK = 70, RUN = 130;   // px / second
   const NPC = 55;
-  const SPR_W = 18, SPR_H = 26; // character sprite incl. 1px outline margin
+  const AP = 2;                 // one Atari sprite pixel = 2x2 world px
+  const PF = 4;                 // playfield blocks snap to 4 world px
+  const SPR_W = 16, SPR_H = 24; // 8x12 Atari pixels
   const CHAR_H = 24;
-  const ROOM_W = 240, ROOM_H = CHAR_H * 5, WALL_H = 42; // characters are 1/5 of room height
-  const UI_FONT = '"Pixelify Sans", "Silkscreen", ui-monospace, monospace';
+  const ROOM_W = 240, ROOM_H = CHAR_H * 5, WALL_H = 40; // characters are 1/5 of room height
+  const UI_FONT = '"Press Start 2P", ui-monospace, monospace';
 
+  // The Atari 2600 NTSC palette: 16 hues x 8 lumas. Every colour on screen is one of these.
+  const NTSC = [
+    "#000000", "#404040", "#6c6c6c", "#909090", "#b0b0b0", "#c8c8c8", "#dcdcdc", "#ececec",
+    "#444400", "#646410", "#84842c", "#a0a044", "#b8b85c", "#d0d070", "#e8e884", "#fcfc98",
+    "#702800", "#844414", "#985c28", "#ac783c", "#bc8c4c", "#cca05c", "#dcb468", "#ecc878",
+    "#841800", "#983418", "#ac5030", "#c06848", "#d0805c", "#e09470", "#eca880", "#fcbc94",
+    "#880000", "#9c2020", "#b03c3c", "#c05858", "#d07070", "#e08888", "#eca0a0", "#fcb4b4",
+    "#78005c", "#8c2074", "#a03c88", "#b0589c", "#c070b0", "#d084c0", "#dc9cd0", "#ecb0e0",
+    "#480078", "#602090", "#783ca4", "#8c58b8", "#a070cc", "#b484dc", "#c49cec", "#d4b0fc",
+    "#140084", "#302098", "#4c3cac", "#6858c0", "#7c70d0", "#9488e0", "#a8a0ec", "#bcb4fc",
+    "#000088", "#1c209c", "#3840b0", "#505cc0", "#6874d0", "#7c8ce0", "#90a0ec", "#a4b4fc",
+    "#00187c", "#1c3890", "#3854a8", "#5070bc", "#6888cc", "#7c9cdc", "#90b4ec", "#a4c8fc",
+    "#002c5c", "#1c4c78", "#386890", "#5084ac", "#689cc0", "#7cb4d4", "#90cce8", "#a4e0fc",
+    "#003c2c", "#1c5c48", "#387c64", "#509c80", "#68b494", "#7cd0ac", "#90e4c0", "#a4fcd4",
+    "#003c00", "#205c20", "#407c40", "#5c9c5c", "#74b474", "#8cd08c", "#a4e4a4", "#b8fcb8",
+    "#143800", "#345c1c", "#507c38", "#6c9850", "#84b468", "#9ccc7c", "#b4e490", "#c8fca4",
+    "#2c3000", "#4c501c", "#687034", "#848c4c", "#9ca864", "#b4c078", "#c8d48c", "#dceca0",
+    "#442800", "#644818", "#846830", "#a08444", "#b89c58", "#d0b46c", "#e8cc7c", "#fce08c",
+  ];
   const PAL = {
-    out: "#1d1420",
-    g0: "#3d7a3a", g1: "#4b8c41", g2: "#5a9e48", g3: "#79b85a", gDeep: "#2f6131",
-    p0: "#c9a46a", p1: "#b48d57", p2: "#dcbc85", pEdge: "#8a6a40",
-    s0: "#bdb5a5", s1: "#b0a898", s2: "#c6bfaf", mortar: "#958e7f", curb: "#7d7668",
-    w0: "#3a7bd5", w1: "#5b9ee8", w2: "#b3dcff",
-    wd0: "#7a4a2a", wd1: "#5a3420", wd2: "#9c6639",
-    glass: "#8fc7e8", glassHi: "#d9f1ff",
+    black: "#000000", white: "#ececec", grey: "#909090", lgrey: "#b0b0b0", dgrey: "#404040",
+    grassA: "#5c9c5c", grassB: "#6c9850", grassDk: "#407c40", leaf: "#205c20", leafHi: "#74b474",
+    path: "#b89c58", pathDk: "#a08444",
+    plazaA: "#909090", plazaB: "#b0b0b0",
+    waterA: "#505cc0", waterB: "#6874d0", waterHi: "#a4b4fc",
+    wood: "#844414", woodDk: "#702800", woodLt: "#ac783c",
+    yellow: "#e8e884", red: "#c05858", orange: "#d0805c",
+    // kept names used by shared code (minimap etc.)
+    g1: "#5c9c5c", g2: "#74b474", g0: "#407c40", gDeep: "#205c20", p0: "#b89c58", s0: "#909090", s1: "#6c6c6c", w0: "#505cc0", out: "#000000",
   };
 
-  // Footprints (tile top-left, size). Doors are on the south wall.
+  // Footprints (tile top-left, size). Doors are on the south wall. Colours are NTSC entries.
   const LAYOUT = {
-    town_hall: { x: 27, y: 3, w: 10, h: 7, roof: "#9b3a32", wall: "#e3d5b8", mat: "stone" },
-    inbox:     { x: 12, y: 4, w: 8, h: 6, roof: "#c0504d", wall: "#f0e2c4", mat: "plank", sign: "mail" },
-    studio:    { x: 44, y: 4, w: 8, h: 6, roof: "#3b3946", wall: "#d9d2e6", mat: "stucco", sign: "play" },
-    bank:      { x: 3, y: 14, w: 8, h: 6, roof: "#2f6f45", wall: "#ece6d6", mat: "stone", sign: "coin" },
-    library:   { x: 3, y: 24, w: 8, h: 6, roof: "#4a4590", wall: "#c9805e", mat: "brick", sign: "book" },
-    travel:    { x: 53, y: 14, w: 8, h: 6, roof: "#23807d", wall: "#f1e5cd", mat: "plank", sign: "globe" },
-    workshop:  { x: 53, y: 24, w: 8, h: 6, roof: "#6b7682", wall: "#cfc8bb", mat: "metal", sign: "gear" },
-    archive:   { x: 8, y: 34, w: 8, h: 6, roof: "#74507e", wall: "#e8d9cc", mat: "stucco", sign: "scroll" },
-    home:      { x: 28, y: 35, w: 8, h: 6, roof: "#b5562e", wall: "#f5e4c3", mat: "plank", sign: "heart" },
-    recruiting:{ x: 48, y: 34, w: 8, h: 6, roof: "#d08a2c", wall: "#efe3cc", mat: "plank", sign: "hiring" },
+    town_hall: { x: 27, y: 3, w: 10, h: 7, roof: "#b03c3c", roof2: "#c05858", wall: "#ecc878", sign: "clock" },
+    inbox:     { x: 12, y: 4, w: 8, h: 6, roof: "#c06848", roof2: "#d0805c", wall: "#ececec", sign: "mail" },
+    studio:    { x: 44, y: 4, w: 8, h: 6, roof: "#404040", roof2: "#6c6c6c", wall: "#c49cec", sign: "play" },
+    bank:      { x: 3, y: 14, w: 8, h: 6, roof: "#387c64", roof2: "#509c80", wall: "#ececec", sign: "coin" },
+    library:   { x: 3, y: 24, w: 8, h: 6, roof: "#4c3cac", roof2: "#6858c0", wall: "#c06848", sign: "book" },
+    travel:    { x: 53, y: 14, w: 8, h: 6, roof: "#386890", roof2: "#5084ac", wall: "#ecc878", sign: "globe" },
+    workshop:  { x: 53, y: 24, w: 8, h: 6, roof: "#6c6c6c", roof2: "#909090", wall: "#b0b0b0", sign: "gear" },
+    archive:   { x: 8, y: 34, w: 8, h: 6, roof: "#783ca4", roof2: "#8c58b8", wall: "#dcb468", sign: "scroll" },
+    home:      { x: 28, y: 35, w: 8, h: 6, roof: "#ac5030", roof2: "#c06848", wall: "#fcbc94", sign: "heart" },
+    recruiting:{ x: 48, y: 34, w: 8, h: 6, roof: "#cca05c", roof2: "#dcb468", wall: "#e8e884", sign: "hiring" },
   };
   const PLAZA = { x: 22, y: 13, w: 21, h: 16 };
   const FOUNTAIN = { x: 32.5 * T, y: 21 * T, r: 2.2 * T };
   const POND = { x: 21.5 * T, y: 37 * T, rx: 3.7 * T, ry: 2.5 * T };
   const inPond = (px, py, grow = 0) => ((px - POND.x) / (POND.rx + grow)) ** 2 + ((py - POND.y) / (POND.ry + grow)) ** 2 < 1;
 
-  const PLAYER_LOOK = { shirt: "#7a4fd0", pants: "#2c2a44", hair: "#3b2416", skin: "#d9a066", style: "short", hoodie: true };
+  const PLAYER_LOOK = { shirt: "#8c58b8", pants: "#302098", hair: "#702800", skin: "#e09470", style: "short", star: true };
   const STYLES = {
-    chief_of_staff: { style: "short", tie: true, phone: true },
+    chief_of_staff: { style: "short", tie: true },
     inbox: { style: "long" }, content: { style: "spiky" }, finance: { style: "bun", glasses: true },
     research: { style: "short", glasses: true }, travel: { style: "bob" }, engineering: { style: "spiky", glasses: true },
     knowledge: { style: "long" },
@@ -241,525 +263,206 @@
     return route ? route.slice(1).map((p) => ({ x: p.x * T + T / 2, y: p.y * T + T - 3 })) : [];
   }
 
-  // ------------------------------------------------------------------ characters
+  // ------------------------------------------------------------------ Atari art
+  /** Snap any colour to the nearest NTSC palette entry. */
+  const nearestCache = new Map();
+  function ntsc(hex) {
+    if (!hex) return PAL.grey;
+    if (nearestCache.has(hex)) return nearestCache.get(hex);
+    const [r, g, b] = rgb(hex);
+    let best = NTSC[0], bd = Infinity;
+    for (const c of NTSC) { const [r2, g2, b2] = rgb(c); const d = (r - r2) ** 2 * 0.3 + (g - g2) ** 2 * 0.59 + (b - b2) ** 2 * 0.11; if (d < bd) { bd = d; best = c; } }
+    nearestCache.set(hex, best);
+    return best;
+  }
+  /** Draw a bitmap of rows (one char per Atari pixel, '.' = clear) at pixel size `px`. */
+  function blocks(g, x, y, rows, colors, px = AP) {
+    rows.forEach((row, j) => [...row].forEach((ch, i) => {
+      const col = colors[ch];
+      if (ch === "." || !col) return;
+      g.fillStyle = col; g.fillRect(x + i * px, y + j * px, px, px);
+    }));
+  }
+
+  // 8x12 sprites. h hair, s skin, e eyes, c shirt, t tie, v vest, w reflective stripe, p pants, f feet, k star badge.
+  const BODY = {
+    down: ["..hhhh..", ".hhhhhh.", ".hssssh.", ".seasse.", "..ssss..", ".cccccc.", "cccttccc", "c.cttc.c", "s.cccc.s", "..pppp..", "..p..p..", ".ff..ff."],
+    up: ["..hhhh..", ".hhhhhh.", ".hhhhhh.", ".hhhhhh.", "..ssss..", ".cccccc.", "cccccccc", "c.cccc.c", "s.cccc.s", "..pppp..", "..p..p..", ".ff..ff."],
+    side: ["..hhhh..", ".hhhhhs.", ".hhssss.", ".hssseas", "..sssss.", "..cccc..", "..cccc..", "..ccsc..", "..cccc..", "..pppp..", "..pp.p..", "..ff.ff."],
+  };
+  const LEGS = {
+    down: [["..pppp..", "..p..p..", ".ff..ff."], ["..pppp..", ".pp...p.", "ff....f."], ["..pppp..", ".p...pp.", ".f....ff"]],
+    side: [["..pppp..", "..pp.p..", "..ff.ff."], ["..pppp..", ".pp..pp.", "ff....ff"], ["..pppp..", "..ppp...", "..fff..."]],
+    sit: [["pppppp..", ".pp.pp..", "........"]],
+  };
   const spriteCache = new Map();
-  /**
-   * 16x24 chibi character (+1px outline margin). dir: 0 down, 1 left, 2 right, 3 up.
-   * frame: 0 stand, 1 stride A, 2 stride B. Left is the right-facing sprite mirrored.
-   */
-  function charSprite(look, dir, frame, sitting = false, blink = false) {
-    const key = JSON.stringify([look, dir, frame, sitting, blink]);
+  function charSprite(look, dir, frame, sitting = false) {
+    const key = JSON.stringify([look, dir, frame, sitting]);
     if (spriteCache.has(key)) return spriteCache.get(key);
-    if (dir === 1) {
-      const src = charSprite(look, 2, frame, sitting, blink);
-      const [c, g] = canvas(SPR_W, SPR_H);
-      g.translate(SPR_W, 0); g.scale(-1, 1); g.drawImage(src, 0, 0);
-      spriteCache.set(key, c);
-      return c;
-    }
     const [c, g] = canvas(SPR_W, SPR_H);
-    const P = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(1 + x, 1 + y, w, h); };
-    const skin = look.skin, skinD = shade(skin, -0.13), hair = look.hair, hairD = shade(hair, -0.12), hairL = shade(hair, 0.12);
-    const shirt = look.shirt, shirtD = shade(shirt, -0.14), shirtL = shade(shirt, 0.1);
-    const pants = look.pants, pantsD = shade(pants, -0.1), shoe = "#3b2a22", shoeL = "#5a4234", eye = PAL.out;
-    const side = dir === 2, up = dir === 3;
-    const u = !sitting && frame ? -1 : 0; // body bob on stride frames
+    const side = dir === 1 || dir === 2, up = dir === 3;
+    const rows = [...(side ? BODY.side : up ? BODY.up : BODY.down)];
+    const legs = sitting ? LEGS.sit[0] : side ? LEGS.side[frame] : LEGS.down[frame];
+    rows.splice(9, 3, ...legs);
     const style = look.style || "short";
-
-    // legs + shoes
-    if (sitting) {
-      if (!up) { P(4, 18, 8, 2, pants); P(4, 18, 8, 1, shade(pants, 0.06)); P(4, 20, 3, 1, shoe); P(9, 20, 3, 1, shoe); }
-    } else if (!side) {
-      const lUp = frame === 1 ? 1 : 0, rUp = frame === 2 ? 1 : 0;
-      P(4, 18, 4, 4 - lUp, pants); P(7, 18, 1, 4 - lUp, pantsD);
-      P(8, 18, 4, 4 - rUp, pants); P(11, 18, 1, 4 - rUp, pantsD);
-      P(4, 22 - lUp, 4, 2, shoe); P(8, 22 - rUp, 4, 2, shoe);
-      if (!up) { P(4, 22 - lUp, 4, 1, shoeL); P(8, 22 - rUp, 4, 1, shoeL); }
-    } else if (frame === 0) {
-      P(6, 18, 4, 4, pants); P(6, 18, 1, 4, pantsD); P(6, 22, 5, 2, shoe); P(6, 22, 5, 1, shoeL);
-    } else {
-      const f = frame === 1 ? 1 : -1;
-      P(6 - 2 * f, 18, 3, 4, pantsD); P(6 - 2 * f, 22, 4, 2, shade(shoe, -0.05));
-      P(7 + 2 * f, 18, 3, 4, pants); P(7 + 2 * f, 22, 4, 2, shoe); P(7 + 2 * f, 22, 4, 1, shoeL);
-    }
-
-    // torso
-    if (!side) {
-      P(4, 11 + u, 8, 7, shirt); P(4, 11 + u, 1, 7, shirtL); P(10, 11 + u, 2, 7, shirtD);
-      P(4, 17 + u, 8, 1, pantsD);
-      if (!up) { P(6, 11 + u, 4, 1, skinD); P(5, 12 + u, 1, 1, shirtL); P(10, 12 + u, 1, 1, shirtL); }
-      if (look.vest) {
-        P(4, 12 + u, 8, 5, "#f2c230"); P(10, 12 + u, 2, 5, "#d4a21c"); P(4, 15 + u, 8, 1, "#f4f4ee");
-        if (!up) P(6, 12 + u, 4, 2, shirt);
-      }
-      if (look.tie && !up) { P(7, 12 + u, 2, 1, "#8e2a36"); P(7, 13 + u, 2, 3, "#b03a48"); }
-      if (look.hoodie && !up) { P(6, 13 + u, 1, 2, "#efe6ff"); P(9, 13 + u, 1, 2, "#efe6ff"); P(5, 11 + u, 6, 1, shirtD); }
-      if (look.badge && !up) P(9, 14 + u, 1, 1, "#ffd34d");
-      // arms swing opposite to legs
-      const aL = frame === 1 ? -1 : frame === 2 ? 1 : 0;
-      if (sitting) { P(3, 12 + u, 1, 4, shirt); P(12, 12 + u, 1, 4, shirtD); P(3, 16 + u, 1, 1, skin); P(12, 16 + u, 1, 1, skin); }
-      else {
-        P(3, 12 + u + aL, 1, 5, shirt); P(12, 12 + u - aL, 1, 5, shirtD);
-        P(3, 17 + u + aL, 1, 1, skin); P(12, 17 + u - aL, 1, 1, skinD);
-      }
-      if (look.phone && !up) { P(12, 15 + u, 2, 3, "#2b2b33"); P(13, 15 + u, 1, 2, "#8fe0ff"); }
-    } else {
-      P(5, 11 + u, 6, 7, shirt); P(5, 11 + u, 1, 7, shirtD); P(10, 11 + u, 1, 7, shirtL);
-      P(5, 17 + u, 6, 1, pantsD);
-      if (look.vest) { P(5, 12 + u, 6, 5, "#f2c230"); P(5, 15 + u, 6, 1, "#f4f4ee"); }
-      if (look.tie) P(10, 12 + u, 1, 4, "#b03a48");
-      const sw = sitting ? 1 : frame === 1 ? 2 : frame === 2 ? -1 : 0;
-      P(7 + Math.min(sw, 1), 12 + u, 2, 5, shirtD); P(7 + sw, 17 + u, 2, 1, skin);
-      if (look.phone) { P(9 + Math.max(sw, 0), 14 + u, 2, 3, "#2b2b33"); P(10 + Math.max(sw, 0), 14 + u, 1, 2, "#8fe0ff"); }
-    }
-
-    // head
-    const hy = u;
-    if (!side) {
-      P(3, 2 + hy, 10, 8, skin); P(4, 10 + hy, 8, 1, skin);
-      P(12, 4 + hy, 1, 6, skinD); P(5, 10 + hy, 7, 1, skinD);
-      P(2, 6 + hy, 1, 2, skinD); P(13, 6 + hy, 1, 2, skinD); // ears
-      if (up) {
-        P(3, 1 + hy, 10, 9, hair); P(4, 0 + hy, 8, 1, hair); P(4, 9 + hy, 8, 1, hairD);
-        P(5, 2 + hy, 2, 1, hairL);
-        if (style === "long") { P(2, 4 + hy, 12, 9, hair); P(3, 11 + hy, 10, 2, hairD); }
-        if (style === "bun") { P(6, -1 + hy, 4, 2, hairD); }
-        if (style === "bob") P(2, 4 + hy, 12, 5, hair);
-      } else {
-        P(4, 0 + hy, 8, 1, hair); P(3, 1 + hy, 10, 3, hair); P(5, 1 + hy, 3, 1, hairL);
-        P(3, 4 + hy, 2, 1, hair); P(9, 4 + hy, 4, 1, hair); P(3, 4 + hy, 10, 0, hair);
-        if (style === "long") { P(2, 3 + hy, 2, 10, hair); P(12, 3 + hy, 2, 10, hairD); }
-        if (style === "bob") { P(2, 3 + hy, 2, 6, hair); P(12, 3 + hy, 2, 6, hairD); }
-        if (style === "bun") { P(6, -1 + hy, 4, 2, hairD); P(7, -1 + hy, 2, 1, hair); }
-        if (style === "spiky") { P(4, -1 + hy, 1, 1, hair); P(7, -1 + hy, 1, 1, hair); P(10, -1 + hy, 1, 1, hair); }
-        // face
-        if (blink) { P(5, 7 + hy, 1, 1, skinD); P(10, 7 + hy, 1, 1, skinD); }
-        else { P(5, 6 + hy, 1, 2, eye); P(10, 6 + hy, 1, 2, eye); P(5, 6 + hy, 1, 1, "#4a3a5a"); P(10, 6 + hy, 1, 1, "#4a3a5a"); }
-        P(4, 8 + hy, 1, 1, "#e79a8c"); P(11, 8 + hy, 1, 1, "#e79a8c");
-        P(7, 9 + hy, 2, 1, shade(skin, -0.22));
-        if (look.glasses) { P(4, 6 + hy, 3, 1, "#2e2a36"); P(9, 6 + hy, 3, 1, "#2e2a36"); P(7, 6 + hy, 2, 1, "#2e2a36"); }
-      }
-    } else {
-      P(4, 2 + hy, 9, 8, skin); P(5, 10 + hy, 7, 1, skin); P(13, 6 + hy, 1, 2, skin);
-      P(5, 10 + hy, 6, 1, skinD);
-      P(4, 0 + hy, 8, 1, hair); P(4, 1 + hy, 9, 3, hair); P(4, 4 + hy, 4, 4, hair); P(6, 1 + hy, 3, 1, hairL);
-      P(7, 6 + hy, 1, 2, skinD); // ear
-      if (style === "long") P(3, 3 + hy, 4, 10, hair);
-      if (style === "bob") P(3, 3 + hy, 4, 7, hair);
-      if (style === "bun") P(3, 0 + hy, 3, 3, hairD);
-      if (style === "spiky") { P(5, -1 + hy, 1, 1, hair); P(8, -1 + hy, 1, 1, hair); P(11, -1 + hy, 1, 1, hair); }
-      if (blink) P(10, 7 + hy, 1, 1, skinD); else { P(10, 6 + hy, 1, 2, eye); P(10, 6 + hy, 1, 1, "#4a3a5a"); }
-      P(11, 9 + hy, 1, 1, shade(skin, -0.22)); P(10, 8 + hy, 1, 1, "#e79a8c");
-      if (look.glasses) P(9, 6 + hy, 4, 1, "#2e2a36");
-    }
-    outline(c);
+    const swap = (r, i, ch) => { rows[r] = rows[r].slice(0, i) + ch + rows[r].slice(i + 1); };
+    if (style === "long") for (const r of [2, 3, 4, 5]) { swap(r, 0, "h"); swap(r, 7, "h"); }
+    if (style === "bob") for (const r of [2, 3]) { swap(r, 0, "h"); swap(r, 7, "h"); }
+    if (style === "spiky") rows[0] = ".h.hh.h.";
+    if (style === "bun") rows[0] = "...hh...";
+    if (look.glasses && !up && !side) rows[3] = ".gesseg.";
+    if (!look.tie) rows.forEach((r, i) => (rows[i] = r.replace(/t/g, "c")));
+    if (look.star && !up) swap(6, side ? 4 : 2, "k");
+    const vest = look.vest ? { c: "#e8e884", w: "#ececec" } : {};
+    if (look.vest && !up) rows[7] = side ? "..wwww.." : "w.wwww.w";
+    const colors = {
+      h: ntsc(look.hair), s: ntsc(look.skin), e: "#000000", g: "#ececec", c: vest.c || ntsc(look.shirt), t: "#9c2020",
+      w: vest.w, p: ntsc(look.pants), f: "#404040", k: "#fcfc98",
+    };
+    if (dir === 1) { g.translate(SPR_W, 0); g.scale(-1, 1); }
+    blocks(g, 0, frame && !sitting ? -AP / 2 : 0, rows, colors);
     spriteCache.set(key, c);
     return c;
   }
-
   function lookOf(p) {
-    if (p.id === "player") return { ...PLAYER_LOOK, badge: true };
+    if (p.id === "player") return { ...PLAYER_LOOK };
     const pal = p.palette || {};
     const extra = STYLES[p.id] || {};
     const style = extra.style || HAIRS[hash(p.id) % HAIRS.length];
     return { shirt: pal.shirt, pants: pal.pants, hair: pal.hair, skin: pal.skin, style, ...extra, vest: p.role === "worker" };
   }
 
-  // ------------------------------------------------------------------ buildings
-  const ICONS = {
-    mail: [["..........", ".wwwwwwww.", ".wrwwwwrw.", ".wwrwwrww.", ".wwwrrwww.", ".wwwwwwww.", ".........."], { w: "#fbfbf6", r: "#c0504d" }],
-    play: [["..........", "..rrrrrr..", ".rrwrrrrr.", ".rrwwrrrr.", ".rrwwwrrr.", ".rrwwrrrr.", ".rrwrrrrr.", "..rrrrrr.."], { r: "#d8383a", w: "#ffffff" }],
-    coin: [["...yyyy...", "..yYYYYy..", ".yYYdYYYy.", ".yYdddYYy.", ".yYYdYYYy.", "..yYYYYy..", "...yyyy..."], { y: "#b8860b", Y: "#f6c945", d: "#8a5d0a" }],
-    book: [["..........", ".bbbb.bbbb", ".bwwb.bwwb", ".bwwbbbwwb", ".bwwbbbwwb", ".bbbbbbbbb", "....bb...."], { b: "#4a4590", w: "#f4ecd8" }],
-    globe: [["...bbbb...", "..bggbbb..", ".bggggbbb.", ".bbggbbgb.", ".bbbbbggb.", "..bbbbbb..", "...bbbb..."], { b: "#3a7bd5", g: "#4fae5a" }],
-    gear: [["...g..g...", "..gggggg..", ".gggddggg.", "..gd..dg..", ".gggddggg.", "..gggggg..", "...g..g..."], { g: "#9aa3ad", d: "#5b636c" }],
-    scroll: [["..........", ".sssssss..", "sSwwwwwSs.", ".swlwlws..", ".swwwwws..", "sSwwwwwSs.", ".sssssss.."], { s: "#a87f4a", S: "#7a5530", w: "#f3e7c5", l: "#8a7a5a" }],
-    heart: [["..........", "..rr..rr..", ".rRrrrrrr.", ".rrrrrrrr.", "..rrrrrr..", "...rrrr...", "....rr...."], { r: "#e0485c", R: "#ffb0bc" }],
-  };
-  const FONT = { // 3x5 pixel font for the HIRING sign
-    H: ["#.#", "#.#", "###", "#.#", "#.#"], I: ["###", ".#.", ".#.", ".#.", "###"], R: ["##.", "#.#", "##.", "#.#", "#.#"],
-    N: ["#.#", "###", "###", "###", "#.#"], G: [".##", "#..", "#.#", "#.#", ".##"],
+  // 4x4 emblems on each house (Atari pixel = 2 world px).
+  const EMBLEMS = {
+    mail: [["wwww", "wrrw", "wwww"], { w: "#ececec", r: "#b03c3c" }],
+    play: [["rrrr", "rwwr", "rwrr", "rrrr"], { r: "#b03c3c", w: "#ececec" }],
+    coin: [[".yy.", "yddy", "yddy", ".yy."], { y: "#e8e884", d: "#b8b85c" }],
+    book: [["wwww", "wbbw", "wwww"], { w: "#ececec", b: "#4c3cac" }],
+    globe: [[".bb.", "bggb", "bbgb", ".bb."], { b: "#505cc0", g: "#5c9c5c" }],
+    gear: [["g.g.", ".gg.", ".gg.", "g..g"], { g: "#dcdcdc" }],
+    scroll: [["yyyy", "ybby", "yyyy"], { y: "#ecc878", b: "#844414" }],
+    heart: [["r..r", "rrrr", ".rr."], { r: "#d07070" }],
   };
 
   function drawHouse(id) {
     const b = LAYOUT[id];
-    const w = b.w * T, h = b.h * T, top = id === "town_hall" ? 62 : 34; // headroom for towers and chimneys
-    const [c, g] = canvas(w + 2, h + top + 2);
-    const P = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(1 + x, 1 + top + y, ww, hh); };
-    const r = mulberry32(hash(id));
-    const roofH = Math.round(h * 0.5);
-    const wallTop = roofH - 2, wx0 = 4, wx1 = w - 4;
-    const wall = b.wall, wallD = shade(wall, -0.08), wallDD = shade(wall, -0.18);
-
-    // --- walls (material) ---
-    P(wx0, wallTop, wx1 - wx0, h - wallTop, wall);
-    if (b.mat === "plank") for (let y = wallTop + 3; y < h - 4; y += 3) P(wx0, y, wx1 - wx0, 1, wallD);
-    if (b.mat === "brick") for (let y = wallTop + 2, row = 0; y < h - 4; y += 3, row++) {
-      P(wx0, y, wx1 - wx0, 1, shade(wall, -0.2));
-      for (let x = wx0 + (row % 2) * 3; x < wx1; x += 6) P(x, y - 2, 1, 2, shade(wall, -0.2));
+    const w = b.w * T, h = b.h * T, top = id === "town_hall" ? 48 : 20;
+    const [c, g] = canvas(w, h + top);
+    const P = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(x, y + top, ww, hh); };
+    const roofH = Math.round((h * 0.5) / PF) * PF, bands = roofH / PF;
+    // walls with an Atari stripe every other band
+    P(PF, roofH, w - 2 * PF, h - roofH, b.wall);
+    for (let y = roofH + PF * 2; y < h - PF; y += PF * 2) P(PF, y, w - 2 * PF, PF / 2, ntsc(shade(b.wall, -0.06)));
+    P(PF, h - PF, w - 2 * PF, PF, PAL.dgrey);
+    // stepped roof
+    for (let k = 0; k < bands; k++) {
+      const inset = Math.floor((bands - 1 - k) / 1.4) * PF;
+      P(inset, k * PF, w - inset * 2, PF, k % 2 ? b.roof : b.roof2);
     }
-    if (b.mat === "stone") for (let y = wallTop + 4, row = 0; y < h - 4; y += 5, row++) {
-      P(wx0, y, wx1 - wx0, 1, wallD);
-      for (let x = wx0 + (row % 2) * 5; x < wx1; x += 10) P(x, y - 4, 1, 4, wallD);
+    P(0, roofH - PF / 2, w, PF / 2, PAL.black);
+    // windows and door
+    const win = (x) => { P(x, roofH + PF * 2, PF * 3, PF * 3, "#fcfc98"); P(x + PF, roofH + PF * 2, PF / 2, PF * 3, b.wall); };
+    win(PF * 3); win(w - PF * 6);
+    const dw = b.w >= 10 ? PF * 6 : PF * 3, dx = Math.round((w / 2 - dw / 2) / PF) * PF;
+    P(dx, h - PF * 5, dw, PF * 4, PAL.black);
+    P(dx - PF / 2, h - PF * 5 - PF / 2, dw + PF, PF / 2, PAL.wood);
+    // chimney
+    if (id !== "town_hall") { P(w - PF * 6, -PF * 3, PF * 2, PF * 5, "#ac5030"); P(w - PF * 6, -PF * 3, PF * 2, PF / 2, PAL.dgrey); }
+    // emblem above the door
+    if (EMBLEMS[b.sign]) {
+      const [rows, colors] = EMBLEMS[b.sign];
+      P(w / 2 - PF * 2, roofH + PF, PF * 4, PF * 3.5, PAL.black);
+      blocks(g, w / 2 - PF * 2 + AP * 2, top + roofH + PF + AP, rows, colors);
     }
-    if (b.mat === "stucco") for (let i = 0; i < 40; i++) P(wx0 + ((r() * (wx1 - wx0)) | 0), wallTop + 2 + ((r() * (h - wallTop - 8)) | 0), 1, 1, wallD);
-    if (b.mat === "metal") for (let x = wx0 + 2; x < wx1; x += 4) P(x, wallTop, 1, h - wallTop - 4, wallD);
-    if (b.mat === "plank" || b.mat === "stucco") { P(wx0, wallTop, 3, h - wallTop, PAL.wd0); P(wx1 - 3, wallTop, 3, h - wallTop, PAL.wd1); }
-    P(wx0, wallTop, wx1 - wx0, 3, "rgba(0,0,0,0.22)"); // shadow under the eaves
-    // foundation
-    for (let x = wx0; x < wx1; x += 6) { P(x, h - 4, 6, 4, x % 12 ? "#8d877c" : "#a09a8e"); P(x, h - 4, 1, 4, "#6f6a60"); }
-    P(wx0, h - 4, wx1 - wx0, 1, "#6f6a60");
-
-    // --- windows with shutters and flower boxes ---
-    const win = (x) => {
-      const y = roofH + 6;
-      P(x - 3, y, 3, 12, shade(b.roof, -0.05)); P(x + 12, y, 3, 12, shade(b.roof, -0.05));
-      P(x - 3, y + 3, 3, 1, shade(b.roof, -0.2)); P(x + 12, y + 3, 3, 1, shade(b.roof, -0.2));
-      P(x, y, 12, 12, PAL.wd1); P(x + 1, y + 1, 10, 10, PAL.glass);
-      P(x + 2, y + 2, 3, 1, PAL.glassHi); P(x + 2, y + 3, 1, 2, PAL.glassHi); P(x + 7, y + 6, 2, 1, PAL.glassHi);
-      P(x + 6, y + 1, 1, 10, PAL.wd1); P(x + 1, y + 6, 10, 1, PAL.wd1);
-      P(x - 1, y + 12, 14, 2, PAL.wd2); P(x, y + 14, 12, 3, PAL.wd0);
-      ["#e0485c", "#ffd34d", "#ff9ec4", "#e0485c", "#ffffff"].forEach((col, i) => P(x + 1 + i * 2 + (i % 2), y + 13 - (i % 2), 1, 1, col));
-      P(x + 1, y + 13, 10, 1, "#3d7a3a");
-    };
-    win(11); win(w - 23);
-
-    // --- door ---
-    const dw = b.w >= 10 ? 26 : 12, dx = Math.round(w / 2 - dw / 2) - (b.w >= 10 ? 0 : 0), dh = 22, dy = h - dh - 2;
-    P(dx - 2, dy - 2, dw + 4, dh + 2, PAL.wd1);
-    P(dx, dy, dw, dh, PAL.wd2);
-    for (let x = dx + 3; x < dx + dw; x += 4) P(x, dy + 1, 1, dh - 1, PAL.wd0);
-    P(dx, dy, 1, 1, PAL.wd1); P(dx + dw - 1, dy, 1, 1, PAL.wd1);
-    P(dx + dw - 4, dy + 11, 2, 2, "#f6c945");
-    P(dx - 3, h - 2, dw + 6, 2, "#9a9488"); P(dx - 3, h - 2, dw + 6, 1, "#b5afa2"); // step
-
-    // --- roof: trapezoid with shingle rows, ridge highlight and eave ---
-    const roof = b.roof;
-    for (let y = 0; y < roofH; y++) {
-      const inset = Math.round(((roofH - y) / roofH) * 12);
-      const band = (y / 4) | 0, light = 0.08 - band * 0.018;
-      let col = shade(roof, light);
-      if (y % 4 === 3) col = shade(roof, light - 0.12);
-      if (b.mat === "metal") col = shade(roof, (inset % 2 ? -0.04 : 0.04) + light);
-      P(inset, y, w - inset * 2, 1, col);
-      if (y % 4 !== 3 && b.mat !== "metal") for (let x = inset + ((band % 2) * 4); x < w - inset; x += 8) P(x, y, 1, 1, shade(roof, light - 0.1));
-    }
-    P(12, 0, w - 24, 2, shade(roof, 0.22)); // ridge
-    P(0, roofH - 3, w, 3, shade(roof, -0.28)); P(0, roofH - 3, w, 1, shade(roof, -0.14)); // eave
-
-    // --- chimney ---
-    if (id !== "town_hall" && id !== "studio") {
-      const cx = w - 26;
-      P(cx, -10, 10, 16, "#8b4b3a");
-      for (let y = -8; y < 6; y += 3) { P(cx, y, 10, 1, "#6e382b"); P(cx + ((y / 3) % 2 ? 2 : 6), y - 2, 1, 2, "#6e382b"); }
-      P(cx - 1, -12, 12, 3, "#5a5a62");
-    }
-
-    // --- landmark details ---
+    if (id === "recruiting") for (let x = PF; x < w - PF; x += PF * 2) { P(x, roofH, PF, PF * 1.5, "#b03c3c"); P(x + PF, roofH, PF, PF * 1.5, "#ececec"); }
+    if (id === "bank") for (const x of [PF * 2, w - PF * 3]) P(x, roofH, PF, h - roofH - PF, "#ececec");
     if (id === "town_hall") {
-      const tx = w / 2 - 11;
-      P(tx, -30, 22, 34, "#e9ddc2"); P(tx + 18, -30, 4, 34, "#cfc2a6");
-      for (let y = -26; y < 4; y += 5) P(tx, y, 22, 1, "#d2c5a8");
-      for (let y = -42; y < -30; y++) { const ins = Math.round(((y + 42) / 12) * -11 + 12); P(tx - 2 + (12 - ins), y, 26 - 2 * (12 - ins), 1, shade(roof, -0.05 + (y % 3 ? 0 : -0.08))); }
-      g.fillStyle = "#fbf8ef"; g.beginPath(); g.arc(1 + w / 2, 1 + top - 16, 7, 0, 7); g.fill();
-      P(w / 2 - 1, -21, 1, 6, PAL.out); P(w / 2 - 1, -16, 4, 1, PAL.out);
-      P(w / 2 - 1, -58, 1, 16, "#4a4a52");
-      for (const cx of [dx - 16, dx - 8, dx + dw + 4, dx + dw + 12]) { P(cx, roofH + 2, 4, h - roofH - 6, "#f7f2e6"); P(cx + 3, roofH + 2, 1, h - roofH - 6, "#cfc8b8"); P(cx - 1, roofH + 1, 6, 2, "#e0d8c6"); }
-      P(dx - 20, h - 4, dw + 40, 2, "#b5afa2"); P(dx - 16, h - 6, dw + 32, 2, "#c7c1b4");
+      for (const x of [dx - PF * 4, dx - PF * 2, dx + dw + PF, dx + dw + PF * 3]) P(x, roofH, PF, h - roofH - PF, "#ececec");
+      const tx = w / 2 - PF * 3;
+      P(tx, -PF * 9, PF * 6, PF * 10, b.wall); P(tx + PF, -PF * 8, PF * 4, PF * 4, "#ececec");
+      P(tx + PF * 3 - AP, -PF * 7, AP, PF * 2, PAL.black); P(tx + PF * 3 - AP, -PF * 6 + AP, PF, AP, PAL.black);
+      for (let k = 0; k < 3; k++) P(tx + k * PF, -PF * (12 - k), PF * (6 - 2 * k), PF, b.roof);
+      P(w / 2 - AP / 2, -PF * 12 - 16, AP, 16, PAL.dgrey);
     }
-    if (id === "studio") { // ring light mount (light itself is animated live)
-      P(w / 2, -12, 1, 14, "#2b2b33"); P(w / 2 - 3, 1, 7, 2, "#2b2b33");
-    }
-    if (id === "recruiting") { // striped awning
-      for (let x = 6; x < w - 6; x += 6) { P(x, roofH, 3, 6, "#f4efe6"); P(x + 3, roofH, 3, 6, "#d8463a"); }
-      for (let x = 6; x < w - 6; x += 3) P(x, roofH + 6, 2, 1, x % 6 ? "#d8463a" : "#f4efe6");
-    }
-    if (id === "bank") for (const cx of [9, w - 13]) { P(cx, roofH, 4, h - roofH - 4, "#fbf8ef"); P(cx + 3, roofH, 1, h - roofH - 4, "#d9d2c2"); }
-
-    // --- hanging sign above the door ---
-    if (b.sign === "hiring") {
-      const sx = w / 2 - 15, sy = roofH + 7;
-      P(sx, sy, 30, 10, PAL.wd1); P(sx + 1, sy + 1, 28, 8, "#f2c230");
-      let x = sx + 2;
-      for (const ch of "HIRING") { bitmap(g, 1 + x, 1 + top + sy + 2, FONT[ch], { "#": PAL.out }); x += 4 + (ch === "I" ? 0 : 0); }
-    } else if (b.sign) {
-      const [rows, colors] = ICONS[b.sign];
-      const sx = w / 2 - 7, sy = dy - 13;
-      P(sx + 2, sy - 3, 1, 3, "#4a4a52"); P(sx + 11, sy - 3, 1, 3, "#4a4a52");
-      P(sx, sy, 14, 11, PAL.wd1); P(sx + 1, sy + 1, 12, 9, "#efe3c8");
-      bitmap(g, 1 + sx + 2, 1 + top + sy + 2, rows, colors);
-    }
-    outline(c);
+    if (id === "studio") P(w / 2 - AP / 2, -PF * 3, AP, PF * 3, PAL.dgrey);
     return { canvas: c, top, roofH };
   }
 
-  // ------------------------------------------------------------------ nature + props
   function drawTree(kind) {
+    const [c, g] = canvas(24, 32);
+    const P = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
     if (kind === "bush") {
-      const [c, g] = canvas(20, 16);
-      const blob = (x, y, r, col) => { g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
-      blob(10, 9, 7, PAL.gDeep); blob(9, 8, 6, PAL.g1); blob(7, 6, 3, PAL.g3);
-      g.fillStyle = "#e0485c"; g.fillRect(12, 6, 1, 1); g.fillRect(6, 10, 1, 1); g.fillStyle = "#ffffff"; g.fillRect(14, 10, 1, 1);
-      return outline(c);
+      P(4, 20, 16, 4, PAL.leafHi); P(0, 24, 24, 4, PAL.grassDk); P(4, 28, 16, 4, PAL.leaf); P(8, 24, AP, AP, "#d07070"); P(16, 28, AP, AP, "#ececec");
+      return c;
     }
-    const [c, g] = canvas(30, 40);
-    const r = mulberry32(kind === "pine" ? 3 : 9);
-    g.fillStyle = PAL.wd1; g.fillRect(13, 26, 5, 12); g.fillStyle = PAL.wd0; g.fillRect(13, 26, 2, 12);
-    g.fillRect(11, 36, 2, 2); g.fillRect(18, 36, 2, 2);
+    P(10, 22, 4, 10, PAL.wood);
     if (kind === "pine") {
-      for (let i = 0; i < 4; i++) {
-        const y0 = 4 + i * 6, half = 5 + i * 3;
-        for (let y = 0; y < 9; y++) {
-          const hw = Math.round((y / 9) * half);
-          g.fillStyle = y > 6 ? "#24502c" : i % 2 ? "#2f6b3a" : "#357a40"; g.fillRect(15 - hw, y0 + y, hw * 2 + 1, 1);
-          g.fillStyle = "#4b9a56"; g.fillRect(15 - hw, y0 + y, 1, 1);
-        }
-      }
+      [4, 8, 12, 16, 20, 24].forEach((wd, k) => P(12 - wd / 2, k * 4, wd, 4, k % 2 ? PAL.leaf : "#387c64"));
     } else {
-      const blob = (x, y, rad, col) => { g.fillStyle = col; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill(); };
-      blob(15, 16, 13, PAL.gDeep); blob(14, 14, 12, PAL.g0); blob(12, 12, 9, PAL.g1); blob(10, 9, 5, PAL.g2);
-      for (let i = 0; i < 40; i++) {
-        const a = r() * 6.28, d = r() * 11, x = 15 + Math.cos(a) * d, y = 15 + Math.sin(a) * d;
-        g.fillStyle = y > 16 ? PAL.gDeep : r() < 0.5 ? PAL.g2 : PAL.g3; g.fillRect(x | 0, y | 0, 1, 1);
-      }
-      g.fillStyle = PAL.g3; g.fillRect(8, 7, 2, 1); g.fillRect(7, 8, 1, 2);
+      [[8, PAL.leafHi], [16, PAL.grassA], [24, PAL.grassA], [24, PAL.grassDk], [16, PAL.grassDk]].forEach(([wd, col], k) => P(12 - wd / 2, k * 4 + 2, wd, 4, col));
+      P(8, 6, AP, AP, "#a4e4a4");
     }
-    return outline(c);
+    return c;
   }
 
   function drawProp(kind) {
     const [c, g] = canvas(34, 30);
     const P = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
-    if (kind === "lamp") {
-      P(15, 8, 2, 20, "#3a3a44"); P(16, 8, 1, 20, "#55555f"); P(13, 27, 6, 2, "#3a3a44");
-      P(12, 2, 8, 7, "#3a3a44"); P(13, 3, 6, 5, "#ffe9a0"); P(14, 4, 2, 2, "#fff8de"); P(11, 1, 10, 2, "#2a2a32");
-    } else if (kind === "bench") {
-      P(2, 14, 30, 3, PAL.wd2); P(2, 14, 30, 1, shade(PAL.wd2, 0.1)); P(2, 18, 30, 3, PAL.wd2);
-      P(2, 10, 30, 3, PAL.wd0); P(4, 21, 2, 6, "#3a3a44"); P(28, 21, 2, 6, "#3a3a44");
-    } else if (kind === "mailbox") {
-      P(15, 14, 2, 14, "#5a3420"); P(10, 6, 12, 9, "#c0504d"); P(10, 6, 12, 2, "#d9706c"); P(21, 4, 1, 5, "#ffd34d"); P(22, 4, 3, 2, "#ffd34d");
-    } else if (kind === "barrel") {
-      P(10, 10, 14, 18, "#7a4a2a"); P(10, 10, 3, 18, "#9c6639"); P(21, 10, 3, 18, "#5a3420");
-      P(9, 13, 16, 2, "#5b5f66"); P(9, 23, 16, 2, "#5b5f66"); P(11, 8, 12, 3, "#5a3420"); P(12, 9, 10, 1, "#9c6639");
-    } else if (kind === "crate") {
-      P(8, 12, 18, 16, "#a8743e"); P(8, 12, 18, 2, "#c48d50"); P(8, 12, 2, 16, "#7a4a2a"); P(24, 12, 2, 16, "#7a4a2a");
-      P(8, 26, 18, 2, "#7a4a2a"); for (let i = 0; i < 14; i++) P(10 + i, 14 + i * 0.85, 2, 2, "#7a4a2a");
-    } else if (kind === "pot") {
-      P(11, 18, 12, 10, "#b5562e"); P(10, 17, 14, 3, "#d0703d"); P(13, 20, 2, 7, "#cf7a4a");
-      for (const [dx, dy, c] of [[11, 10, "#3d7a3a"], [15, 7, "#4b8c41"], [19, 10, "#3d7a3a"], [13, 13, "#5a9e48"], [18, 13, "#5a9e48"]]) P(dx, dy, 5, 5, c);
-      P(14, 8, 2, 2, "#e0485c"); P(19, 11, 2, 2, "#ffd34d"); P(11, 12, 2, 2, "#ff9ec4");
-    } else if (kind === "well") {
-      P(6, 16, 22, 12, "#8f8a80"); P(6, 16, 22, 3, "#b4aea2"); P(9, 18, 16, 3, "#2a4f8f");
-      for (let x = 6; x < 28; x += 5) P(x, 22, 1, 6, "#6f6a60");
-      P(7, 3, 2, 14, PAL.wd1); P(25, 3, 2, 14, PAL.wd1); P(4, 0, 26, 4, "#9b3a32"); P(4, 3, 26, 1, "#6e2a24");
-      P(16, 4, 1, 8, "#c9b48a"); P(14, 11, 5, 4, PAL.wd2);
-    } else if (kind === "tripod") {
-      P(16, 14, 2, 14, "#2b2b33"); P(12, 26, 2, 2, "#2b2b33"); P(20, 26, 2, 2, "#2b2b33");
-      for (let i = 0; i < 6; i++) { P(15 - i * 0.6, 20 + i, 1, 1, "#2b2b33"); P(18 + i * 0.6, 20 + i, 1, 1, "#2b2b33"); }
-      P(10, 8, 14, 8, "#3a3a44"); P(23, 9, 4, 6, "#55555f"); P(12, 10, 4, 3, "#7fd1ff"); P(11, 6, 3, 2, "#d8383a");
-    } else if (kind === "suitcase") {
-      P(9, 14, 16, 13, "#8a5a2b"); P(9, 14, 16, 2, "#a8743e"); P(14, 11, 6, 3, "#5a3420"); P(15, 12, 4, 1, "#a8743e");
-      P(11, 18, 4, 4, "#e0485c"); P(18, 20, 5, 3, "#3a7bd5"); P(9, 26, 16, 1, "#5a3420");
-    } else if (kind === "noticeboard") {
-      P(9, 14, 2, 14, PAL.wd1); P(23, 14, 2, 14, PAL.wd1); P(6, 4, 22, 14, PAL.wd1); P(7, 5, 20, 12, "#c9a46a");
-      P(9, 7, 6, 7, "#fbf8ef"); P(17, 6, 8, 5, "#ffe08a"); P(18, 12, 6, 4, "#bfe7ff"); P(11, 7, 2, 1, "#d8383a");
-    } else if (kind === "cart") {
-      P(6, 12, 22, 10, PAL.wd2); P(6, 12, 22, 2, shade(PAL.wd2, 0.12));
-      ["#c0504d", "#3a7d44", "#5b5ea6", "#e07b39", "#d9c27a", "#c0504d"].forEach((c, i) => P(8 + i * 3, 7 + (i % 2), 2, 6 - (i % 2), c));
-      P(8, 20, 6, 6, "#3a3a44"); P(20, 20, 6, 6, "#3a3a44"); P(10, 22, 2, 2, "#8a8a94"); P(22, 22, 2, 2, "#8a8a94");
-    } else if (kind === "fence") {
-      P(0, 17, 34, 2, "#e8dcc0"); P(0, 22, 34, 2, "#e8dcc0");
-      for (let x = 1; x < 34; x += 6) { P(x, 12, 3, 16, "#f4ecd8"); P(x + 2, 12, 1, 16, "#cfc2a6"); P(x + 1, 11, 1, 1, "#f4ecd8"); }
-    } else if (kind === "signpost") {
-      P(15, 6, 2, 22, PAL.wd1); P(6, 6, 20, 6, PAL.wd2); P(6, 6, 20, 1, shade(PAL.wd2, 0.12)); P(4, 8, 2, 2, PAL.wd2);
-      P(9, 8, 12, 1, PAL.wd0); P(11, 10, 8, 1, PAL.wd0);
+    switch (kind) {
+      case "lamp": P(16, 8, 2, 20, PAL.dgrey); P(12, 2, 10, 6, "#fcfc98"); P(12, 0, 10, 2, PAL.dgrey); P(14, 28, 6, 2, PAL.dgrey); break;
+      case "bench": P(2, 14, 30, 4, PAL.wood); P(2, 10, 30, 2, PAL.woodDk); P(4, 18, 2, 8, PAL.dgrey); P(28, 18, 2, 8, PAL.dgrey); break;
+      case "mailbox": P(16, 14, 2, 14, PAL.wood); P(10, 6, 14, 8, "#b03c3c"); P(22, 2, 2, 6, "#e8e884"); break;
+      case "signpost": P(16, 8, 2, 20, PAL.wood); P(6, 6, 22, 6, PAL.woodLt); P(4, 8, 2, 2, PAL.woodLt); break;
+      case "barrel": P(10, 10, 14, 18, PAL.wood); P(10, 14, 14, 2, PAL.dgrey); P(10, 22, 14, 2, PAL.dgrey); break;
+      case "crate": P(8, 12, 18, 16, PAL.woodLt); P(8, 12, 18, 2, "#cca05c"); P(8, 19, 18, 2, PAL.wood); break;
+      case "pot": P(12, 18, 10, 10, "#ac5030"); P(10, 8, 14, 10, PAL.grassA); P(12, 8, 2, 2, "#d07070"); P(20, 12, 2, 2, "#e8e884"); break;
+      case "well": P(6, 16, 22, 12, PAL.grey); P(10, 18, 14, 4, "#3840b0"); P(6, 2, 2, 14, PAL.wood); P(26, 2, 2, 14, PAL.wood); P(4, 0, 26, 4, "#b03c3c"); break;
+      case "tripod": P(16, 14, 2, 14, PAL.dgrey); P(12, 26, 10, 2, PAL.dgrey); P(10, 8, 14, 6, PAL.dgrey); P(12, 10, 4, 2, "#90cce8"); P(10, 6, 2, 2, "#b03c3c"); break;
+      case "suitcase": P(10, 14, 14, 12, PAL.wood); P(14, 10, 6, 4, PAL.woodDk); P(12, 18, 4, 4, "#b03c3c"); break;
+      case "noticeboard": P(10, 14, 2, 14, PAL.wood); P(22, 14, 2, 14, PAL.wood); P(6, 4, 22, 12, "#cca05c"); P(8, 6, 6, 6, "#ececec"); P(18, 6, 8, 4, "#e8e884"); break;
+      case "cart": P(6, 12, 22, 8, PAL.woodLt); ["#b03c3c", "#5c9c5c", "#4c3cac", "#e8e884"].forEach((col, i) => P(8 + i * 5, 6, 3, 6, col)); P(8, 20, 6, 6, PAL.dgrey); P(20, 20, 6, 6, PAL.dgrey); break;
+      case "fence": P(0, 16, 34, 2, "#ececec"); P(0, 22, 34, 2, "#ececec"); for (let x = 1; x < 34; x += 6) P(x, 12, 2, 16, "#ececec"); break;
     }
-    return outline(c);
+    return c;
   }
 
+  /** The playfield: grass in Atari stripes, flat paths, checkered plaza, stepped water. */
   function drawGround() {
     const [c, g] = canvas(W * T, H * T);
-    const img = g.createImageData(W * T, H * T), d = img.data;
+    const P = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
     const r = mulberry32(7);
-    const cols = {};
-    const put = (x, y, hex) => { const v = cols[hex] || (cols[hex] = rgb(hex)); const i = (y * W * T + x) * 4; d[i] = v[0]; d[i + 1] = v[1]; d[i + 2] = v[2]; d[i + 3] = 255; };
+    for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
+      const v = at(tx, ty), base = v === 8 ? under[ty * W + tx] : v, X = tx * T, Y = ty * T;
+      if (base === 2 || base === 6) {
+        for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) P(X + i * 8, Y + j * 8, 8, 8, (tx * 2 + i + ty * 2 + j) % 2 ? PAL.plazaA : PAL.plazaB);
+      } else if (base === 1 || base === 4) {
+        P(X, Y, T, T, PAL.path);
+      } else {
+        P(X, Y, T, 8, PAL.grassA); P(X, Y + 8, T, 8, PAL.grassB);
+        if (v === 7) for (let i = 0; i < 3; i++) P(X + 2 + ((r() * 6) | 0) * 2, Y + 2 + ((r() * 6) | 0) * 2, AP, AP, ["#e8e884", "#d07070", "#ececec"][i]);
+      }
+    }
+    // path edges, one Atari pixel
     for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
       const v = at(tx, ty);
-      const base = v === 8 ? under[ty * W + tx] : v;
-      const kind = base === 2 || base === 6 ? "plaza" : base === 1 || base === 4 ? "path" : "grass";
-      for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-        const X = tx * T + x, Y = ty * T + y, n = r();
-        let col;
-        if (kind === "grass") col = n < 0.1 ? PAL.g0 : n < 0.2 ? PAL.g2 : PAL.g1;
-        else if (kind === "path") col = n < 0.08 ? PAL.p1 : n < 0.14 ? PAL.p2 : PAL.p0;
-        else {
-          const row = (Y / 6) | 0, off = (row % 2) * 6, bx = ((X + off) / 12) | 0;
-          const tint = hash(`${bx},${row}`) % 5;
-          col = Y % 6 === 5 || (X + off) % 12 === 0 ? PAL.mortar : tint === 0 ? PAL.s1 : tint === 1 ? PAL.s2 : PAL.s0;
-          if (Y % 6 === 0 && (X + off) % 12 !== 0) col = shade(col, 0.04);
-        }
-        put(X, Y, col);
-      }
+      if (v !== 1 && v !== 4) continue;
+      const grass = (a) => a === 0 || a === 5 || a === 7 || a === 9;
+      if (grass(at(tx, ty - 1))) P(tx * T, ty * T, T, AP, PAL.pathDk);
+      if (grass(at(tx, ty + 1))) P(tx * T, ty * T + T - AP, T, AP, PAL.pathDk);
     }
-    g.putImageData(img, 0, 0);
-    const P = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
-    // path & plaza edges, grass tufts and flowers
-    for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
-      const v = at(tx, ty), X = tx * T, Y = ty * T;
-      const isGround = (a) => a === 0 || a === 5 || a === 7 || a === 9;
-      if (v === 1 || v === 4) {
-        if (isGround(at(tx, ty - 1))) { P(X, Y, T, 1, PAL.pEdge); for (let i = 0; i < 4; i++) P(X + ((r() * 15) | 0), Y + 1, 1, 1, PAL.g1); }
-        if (isGround(at(tx, ty + 1))) P(X, Y + T - 1, T, 1, PAL.pEdge);
-        if (isGround(at(tx - 1, ty))) P(X, Y, 1, T, PAL.pEdge);
-        if (isGround(at(tx + 1, ty))) P(X + T - 1, Y, 1, T, PAL.pEdge);
-      }
-      if (v === 2) {
-        if (at(tx, ty - 1) !== 2 && at(tx, ty - 1) !== 6 && at(tx, ty - 1) !== 8) P(X, Y, T, 2, PAL.curb);
-        if (at(tx, ty + 1) !== 2 && at(tx, ty + 1) !== 6 && at(tx, ty + 1) !== 8) P(X, Y + T - 2, T, 2, PAL.curb);
-        if (at(tx - 1, ty) !== 2 && at(tx - 1, ty) !== 6 && at(tx - 1, ty) !== 8) P(X, Y, 2, T, PAL.curb);
-        if (at(tx + 1, ty) !== 2 && at(tx + 1, ty) !== 6 && at(tx + 1, ty) !== 8) P(X + T - 2, Y, 2, T, PAL.curb);
-      }
-      if (v === 0 && r() < 0.35) { const x = X + 2 + ((r() * 11) | 0), y = Y + 3 + ((r() * 10) | 0); P(x, y, 1, 2, PAL.g0); P(x + 1, y - 1, 1, 3, PAL.g3); P(x + 2, y, 1, 2, PAL.g0); }
-      if (v === 7) for (let i = 0; i < 4; i++) {
-        const x = X + 2 + ((r() * 11) | 0), y = Y + 2 + ((r() * 11) | 0), col = ["#ffd34d", "#ff8fa3", "#ffffff", "#b48cff"][(r() * 4) | 0];
-        P(x, y + 1, 1, 2, PAL.g0); P(x - 1, y, 3, 1, col); P(x, y - 1, 1, 3, col); P(x, y, 1, 1, "#fff6c8");
-      }
+    // pond and fountain, in 4px steps
+    for (let y = POND.y - POND.ry - 8; y < POND.y + POND.ry + 8; y += PF) for (let x = POND.x - POND.rx - 8; x < POND.x + POND.rx + 8; x += PF) {
+      const cx = x + 2, cy = y + 2;
+      if (inPond(cx, cy)) P(x, y, PF, PF, ((y / PF) | 0) % 2 ? PAL.waterA : PAL.waterB);
+      else if (inPond(cx, cy, 5)) P(x, y, PF, PF, "#d0b46c");
     }
-    // shadows cast by buildings (light from the top-left)
-    g.fillStyle = "rgba(20,30,25,0.2)";
-    for (const b of Object.values(LAYOUT)) {
-      const x1 = (b.x + b.w) * T - 4, y0 = b.y * T + Math.round(b.h * T * 0.5) + 4, y1 = (b.y + b.h) * T;
-      g.beginPath(); g.moveTo(x1, y0); g.lineTo(x1 + 6, y0 + 6); g.lineTo(x1 + 6, y1 + 4); g.lineTo(b.x * T + 10, y1 + 4); g.lineTo(b.x * T + 6, y1); g.lineTo(x1, y1); g.closePath(); g.fill();
-    }
-    for (const t of trees) if (t.kind !== "bush") { g.beginPath(); g.ellipse(t.x + 3, t.y + 1, 11, 4, 0, 0, 7); g.fill(); }
-    // pond: sandy shore, deep centre, reeds and lily pads
-    for (let y = POND.y - POND.ry - 8; y < POND.y + POND.ry + 8; y++) for (let x = POND.x - POND.rx - 8; x < POND.x + POND.rx + 8; x++) {
-      if (inPond(x, y, 6)) {
-        let col = inPond(x, y, 3) ? PAL.p2 : PAL.p1;
-        if (inPond(x, y)) col = inPond(x, y, -6) ? (inPond(x, y, -16) ? "#2f68b8" : PAL.w0) : "#4a8ad8";
-        if (inPond(x, y) && !inPond(x, y, -1.5)) col = "#245a9e";
-        P(x, y, 1, 1, col);
-      }
-    }
-    for (const [ox, oy] of [[-0.5, -0.2], [0.35, 0.3], [0.1, -0.45], [-0.25, 0.4]]) {
-      const lx = Math.round(POND.x + ox * POND.rx), ly = Math.round(POND.y + oy * POND.ry);
-      g.fillStyle = "#1d5a2a"; g.beginPath(); g.ellipse(lx, ly, 5, 3, 0, 0, 7); g.fill();
-      g.fillStyle = "#4b9a46"; g.beginPath(); g.ellipse(lx, ly - 0.5, 4, 2.4, 0, 0.5, 6.1); g.fill();
-      if (ox < 0) { P(lx - 1, ly - 2, 2, 2, "#ff9ec4"); P(lx, ly - 2, 1, 1, "#ffffff"); }
-    }
-    for (const ang of [2.4, 2.6, 2.8, 0.2, 0.35, 5.9]) {
-      const rx = Math.round(POND.x + Math.cos(ang) * (POND.rx + 1)), ry = Math.round(POND.y + Math.sin(ang) * (POND.ry + 1));
-      for (let k = 0; k < 3; k++) { P(rx + k * 2, ry - 7 + k, 1, 8 - k, PAL.gDeep); P(rx + k * 2, ry - 8 + k, 1, 2, "#7a5a32"); }
-    }
-
-    // fountain: stone rim, basin and pedestal
+    for (const [ox, oy] of [[-0.5, -0.2], [0.35, 0.3], [0.1, -0.45]]) P(Math.round((POND.x + ox * POND.rx) / PF) * PF, Math.round((POND.y + oy * POND.ry) / PF) * PF, PF * 2, PF, PAL.grassDk);
     const { x: fx, y: fy, r: fr } = FOUNTAIN;
-    const ring = (rad, col) => { g.fillStyle = col; g.beginPath(); g.arc(fx, fy, rad, 0, 7); g.fill(); };
-    ring(fr + 4, PAL.out); ring(fr + 3, "#8f8a80"); ring(fr + 1, "#b4aea2"); ring(fr - 2, PAL.out); ring(fr - 3, PAL.w0);
-    g.fillStyle = "#c9c3b6"; g.beginPath(); g.arc(fx, fy, fr + 1, Math.PI * 1.05, Math.PI * 1.6); g.lineTo(fx, fy); g.fill();
-    ring(fr - 3, PAL.w0); ring(fr - 7, "#3270c4");
-    return c;
-  }
-
-  // ------------------------------------------------------------------ painted art (optional)
-  // Drop images into village/assets/<kind>/<name>.png (see docs/village-art-prompts.md).
-  // Whatever exists replaces the pixel art; anything missing keeps the pixel art.
-  const ART = { ground: {}, houses: {}, trees: {}, props: {}, rooms: {}, characters: {} };
-  let HD = false;
-  const loadImage = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
-
-  /** Downscale, and key out a solid green (#00FF00) background if the image has one. */
-  function keyed(img, maxW = 1600) {
-    const k = Math.min(1, maxW / img.width), w = Math.round(img.width * k), h = Math.round(img.height * k);
-    const [c, g] = canvas(w, h);
-    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high"; g.drawImage(img, 0, 0, w, h);
-    const data = g.getImageData(0, 0, w, h), d = data.data;
-    const greenAt = (i) => d[i + 1] > 150 && d[i + 1] > d[i] * 1.5 && d[i + 1] > d[i + 2] * 1.5;
-    const corners = [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + w - 1) * 4];
-    if (corners.filter(greenAt).length >= 3) {
-      for (let i = 0; i < d.length; i += 4) {
-        const r = d[i], gr = d[i + 1], b = d[i + 2];
-        if (gr > 100 && gr > r * 1.3 && gr > b * 1.3) d[i + 3] = 0;
-        else if (gr > r && gr > b) d[i + 1] = Math.max(r, b); // remove green spill on edges
-      }
-      g.putImageData(data, 0, 0);
+    for (let y = fy - fr - 6; y < fy + fr + 6; y += PF) for (let x = fx - fr - 6; x < fx + fr + 6; x += PF) {
+      const d = Math.hypot(x + 2 - fx, y + 2 - fy);
+      if (d < fr - 2) P(x, y, PF, PF, ((y / PF) | 0) % 2 ? PAL.waterA : PAL.waterB);
+      else if (d < fr + 4) P(x, y, PF, PF, PAL.lgrey);
     }
-    return c;
-  }
-  /** A character sheet: 3 columns (stand, step, step) x 4 rows (down, left, right, up) [+ a sitting row]. */
-  function sheet(img) {
-    const c = keyed(img, 1200), rows = c.width / c.height < 0.45 ? 5 : 4, cw = c.width / 3, ch = c.height / rows;
-    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
-    const cells = [];
-    for (let r = 0; r < rows; r++) {
-      cells.push([]);
-      for (let col = 0; col < 3; col++) {
-        let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
-        for (let y = Math.floor(r * ch); y < Math.floor((r + 1) * ch); y += 2) for (let x = Math.floor(col * cw); x < Math.floor((col + 1) * cw); x += 2) {
-          if (d[(y * c.width + x) * 4 + 3] > 60) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-        }
-        cells[r].push(x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 2, h: y1 - y0 + 2 });
-      }
-    }
-    return { canvas: c, rows, cells };
-  }
-  async function loadArt() {
-    let manifest = window.VILLAGE_ASSETS || null;
-    if (!manifest) { try { const r = await fetch("assets/manifest.json", { cache: "no-store" }); if (r.ok) manifest = await r.json(); } catch {} }
-    if (!manifest) return;
-    const jobs = [];
-    for (const kind of Object.keys(ART)) for (const [name, rel] of Object.entries(manifest[kind] || {})) {
-      jobs.push(loadImage("assets/" + rel).then((img) => {
-        ART[kind][name] = kind === "characters" ? sheet(img) : kind === "rooms" ? keyed(img, 2400) : kind === "ground" ? keyed(img, 512) : keyed(img);
-      }).catch(() => {}));
-    }
-    await Promise.all(jobs);
-    HD = Object.values(ART).some((k) => Object.keys(k).length > 0);
-    if (!HD) return;
-    document.body.classList.add("hd");
-    if (Object.keys(ART.ground).length) world.ground = drawGroundHD(world.ground);
-  }
-  function drawArt(img, ...args) {
-    lg.imageSmoothingEnabled = true; lg.imageSmoothingQuality = "high";
-    lg.drawImage(img, ...args);
-    lg.imageSmoothingEnabled = false;
-  }
-
-  /** Ground from seamless textures at 2x, with soft edges between grass, path and plaza. */
-  function drawGroundHD(proc) {
-    const K = 2, GW = W * T * K, GH = H * T * K;
-    const [c, g] = canvas(GW, GH);
-    g.drawImage(proc, 0, 0, GW, GH);
-    const kindAt = (tx, ty) => {
-      const v = at(tx, ty), base = v === 8 ? under[ty * W + tx] : v;
-      return base === 2 || base === 6 ? "plaza" : base === 1 || base === 4 ? "path" : base === 10 ? "water" : "grass";
-    };
-    for (const kind of ["grass", "path", "plaza"]) {
-      const tex = ART.ground[kind];
-      if (!tex) continue;
-      const [m, mg] = canvas(GW, GH);
-      mg.fillStyle = "#fff";
-      for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) if (kindAt(tx, ty) === kind) mg.fillRect(tx * T * K - 1, ty * T * K - 1, T * K + 2, T * K + 2);
-      const [l, lgx] = canvas(GW, GH);
-      const pat = lgx.createPattern(tex, "repeat"), sc = (64 * K) / tex.width;
-      pat.setTransform(new DOMMatrix([sc, 0, 0, sc, 0, 0]));
-      lgx.fillStyle = pat; lgx.fillRect(0, 0, GW, GH);
-      lgx.globalCompositeOperation = "destination-in";
-      lgx.filter = kind === "grass" ? "none" : "blur(3px)";
-      lgx.drawImage(m, 0, 0);
-      g.drawImage(l, 0, 0);
-    }
-    // shadows, then the pond and fountain from the hand-built layer
-    g.fillStyle = "rgba(20,30,25,0.22)";
-    for (const b of Object.values(LAYOUT)) {
-      const x1 = ((b.x + b.w) * T - 4) * K, y0 = (b.y * T + Math.round(b.h * T * 0.5) + 4) * K, y1 = (b.y + b.h) * T * K;
-      g.beginPath(); g.moveTo(x1, y0); g.lineTo(x1 + 6 * K, y0 + 6 * K); g.lineTo(x1 + 6 * K, y1 + 4 * K); g.lineTo((b.x * T + 10) * K, y1 + 4 * K); g.lineTo((b.x * T + 6) * K, y1); g.lineTo(x1, y1); g.closePath(); g.fill();
-    }
-    for (const t of trees) if (t.kind !== "bush") { g.beginPath(); g.ellipse((t.x + 3) * K, (t.y + 1) * K, 11 * K, 4 * K, 0, 0, 7); g.fill(); }
-    g.save(); g.beginPath();
-    g.ellipse(POND.x * K, POND.y * K, (POND.rx + 7) * K, (POND.ry + 7) * K, 0, 0, 7);
-    g.moveTo((FOUNTAIN.x + FOUNTAIN.r + 5) * K, FOUNTAIN.y * K); g.arc(FOUNTAIN.x * K, FOUNTAIN.y * K, (FOUNTAIN.r + 5) * K, 0, 7);
-    g.clip(); g.drawImage(proc, 0, 0, GW, GH); g.restore();
     return c;
   }
 
@@ -772,8 +475,7 @@
   let showNav = false;
   let chatWith = null;
   let meeting = null;        // { agenda, done }
-  const smoke = [], birds = [], sparkles = [], dust = [], leaves = [], clouds = [], butterflies = [], fireflies = [];
-  let wind = 0;
+  const smoke = [], birds = [], dust = [], butterflies = [], fireflies = [];
   let lastM = 0;
   const qsHour = Number(new URLSearchParams(location.search).get("hour"));
   const hourNow = () => (Number.isFinite(qsHour) && qsHour > 0 ? qsHour : new Date().getHours() + new Date().getMinutes() / 60);
@@ -1044,417 +746,236 @@
   }
   addEventListener("resize", resize);
 
-  /** Pick an integer device-pixel scale, size the world canvas, place the camera. */
+  /** Render at true size, scale by whole device pixels, keep the focus clear of the toolbar. */
   function setView(worldW, worldH, zoom, fx, fy) {
-    // Pixel art: render at true size, scale by whole device pixels. Painted art: render at device resolution.
-    S = HD ? zoom * dpr : Math.max(2, Math.round(zoom * dpr));
+    S = Math.max(2, Math.round(zoom * dpr));
     const vw = Math.ceil(cv.width / S), vh = Math.ceil(cv.height / S);
-    const lw = HD ? cv.width : vw + 1, lh = HD ? cv.height : vh + 1;
-    if (lo.width !== lw || lo.height !== lh) { lo.width = lw; lo.height = lh; lg.imageSmoothingEnabled = false; }
-    const topPad = Math.ceil((($("toolbar")?.offsetHeight || 0) * dpr) / S); // keep the focus clear of the toolbar
+    if (lo.width !== vw + 1 || lo.height !== vh + 1) { lo.width = vw + 1; lo.height = vh + 1; lg.imageSmoothingEnabled = false; }
+    const topPad = Math.ceil((($("toolbar")?.offsetHeight || 0) * dpr) / S);
     const avail = vh - topPad;
     camX = worldW <= vw ? -Math.floor((vw - worldW) / 2) : clamp(Math.round(fx - vw / 2), 0, worldW - vw);
     camY = worldH <= avail ? -Math.floor(topPad + (avail - worldH) / 2)
       : clamp(Math.round(fy - topPad - avail / 2), -topPad, worldH - vh);
-    if (HD) lg.setTransform(S, 0, 0, S, -camX * S, -camY * S);
-    else lg.setTransform(1, 0, 0, 1, -camX, -camY);
+    lg.setTransform(1, 0, 0, 1, -camX, -camY);
   }
   const toScreen = (x, y) => [(x - camX) * S, (y - camY) * S];
+  const snap = (v, k = AP) => Math.round(v / k) * k;
 
-  const artFor = (p) => ART.characters[p.id] || (p.role === "worker" ? ART.characters.worker : null);
-  function drawPainted(art, p, x, y, opts) {
-    const dir = opts.dir ?? p.dir;
-    let r, c;
-    if (opts.sitting) { if (art.rows >= 5) { r = 4; c = dir === 3 ? 1 : 0; } else { r = dir === 3 ? 3 : 0; c = 0; } }
-    else { r = dir; c = p.frame; }
-    const cell = art.cells[r]?.[c] || art.cells[r]?.[0] || art.cells[0][0];
-    if (!cell) return false;
-    const h = opts.sitting ? CHAR_H * 0.85 : CHAR_H * 1.15, w = (cell.w * h) / cell.h;
-    lg.fillStyle = "rgba(20,20,30,.3)";
-    lg.beginPath(); lg.ellipse(x, y, w * 0.38, 2.2, 0, 0, 7); lg.fill();
-    if (opts.clipY !== undefined) { lg.save(); lg.beginPath(); lg.rect(x - 60, y - 80, 120, opts.clipY - (y - 80)); lg.clip(); }
-    drawArt(art.canvas, cell.x, cell.y, cell.w, cell.h, x - w / 2, y - h + 1, w, h);
-    if (opts.clipY !== undefined) lg.restore();
-    return true;
-  }
   function drawPerson(p, x, y, opts = {}) {
-    const art = artFor(p);
-    if (art && drawPainted(art, p, x, y, opts)) return;
-    const blink = ((performance.now() / 1000 + (hash(p.id) % 997) / 97) % 3.7) < 0.13;
-    const s = charSprite(lookOf(p), opts.dir ?? p.dir, opts.sitting ? 0 : p.frame, !!opts.sitting, blink);
-    lg.fillStyle = "rgba(20,20,30,.28)";
-    lg.beginPath(); lg.ellipse(Math.round(x), Math.round(y), 6, 2, 0, 0, 7); lg.fill();
-    lg.drawImage(s, Math.round(x - SPR_W / 2), Math.round(y - SPR_H + 1));
+    const s = charSprite(lookOf(p), opts.dir ?? p.dir, opts.sitting ? 0 : p.frame, !!opts.sitting);
+    lg.fillStyle = "rgba(0,0,0,.3)"; lg.fillRect(snap(x) - 6, snap(y) - 1, 12, AP);
+    lg.drawImage(s, snap(x - SPR_W / 2), snap(y - SPR_H + 1));
   }
 
   function zoomFor() { return innerWidth < 600 ? 2 : clamp(Math.round(Math.min(innerWidth / (26 * T), innerHeight / (15 * T))), 2, 4); }
 
   function renderTown(now) {
     setView(W * T, H * T, zoomFor(), player.x, player.y - 8);
-    const vw = lo.width / (HD ? S : 1), vh = lo.height / (HD ? S : 1), t = now / 1000;
-    lg.fillStyle = PAL.gDeep; lg.fillRect(camX, camY, vw, vh);
-    if (world.ground.width > W * T) drawArt(world.ground, 0, 0, W * T, H * T); else lg.drawImage(world.ground, 0, 0);
+    const vw = lo.width, vh = lo.height, t = now / 1000;
+    lg.fillStyle = PAL.leaf; lg.fillRect(camX, camY, vw, vh);
+    lg.drawImage(world.ground, 0, 0);
+    const P = (x, y, w, h, col) => { lg.fillStyle = col; lg.fillRect(snap(x), snap(y), w, h); };
 
-    // fountain water: ripples, sparkles, spout
+    // water rows scroll like an Atari river; the fountain spouts blocks
+    const shift = Math.floor(t * 4) % 2;
+    for (let y = POND.y - POND.ry; y < POND.y + POND.ry; y += PF * 2) for (let x = POND.x - POND.rx; x < POND.x + POND.rx; x += PF * 3) {
+      if (inPond(x + 2, y + 2, -3) && ((x / PF + y / PF + shift) | 0) % 5 === 0) P(x, y, PF * 2, AP, PAL.waterHi);
+    }
     const { x: fx, y: fy } = FOUNTAIN;
-    for (let i = 0; i < 3; i++) {
-      lg.strokeStyle = `rgba(210,240,255,${0.45 - i * 0.12})`; lg.lineWidth = 1;
-      lg.beginPath(); lg.arc(fx, fy, ((t * 9 + i * 8) % 24) + 6, 0, 7); lg.stroke();
+    P(fx - 4, fy - 10, 8, 12, PAL.lgrey); P(fx - 8, fy - 12, 16, 4, PAL.white);
+    for (let i = 0; i < 6; i++) {
+      const a = (t * 1.4 + i / 6) % 1;
+      P(fx - 2 + (i - 2.5) * 4 * a, fy - 14 - Math.sin(a * Math.PI) * 12, AP, AP, i % 2 ? PAL.waterHi : PAL.white);
     }
-    if (Math.random() < 0.3) sparkles.push({ x: fx + (Math.random() - 0.5) * 50, y: fy + (Math.random() - 0.5) * 40, life: 1 });
-    for (const s of sparkles) if (Math.hypot(s.x - fx, s.y - fy) < FOUNTAIN.r - 4) { lg.fillStyle = `rgba(255,255,255,${s.life})`; lg.fillRect(s.x | 0, s.y | 0, 1, 1); }
-    const ell = (cx, cy, rx, ry, col) => { lg.fillStyle = col; lg.beginPath(); lg.ellipse(cx, cy, rx, ry, 0, 0, 7); lg.fill(); };
-    ell(fx, fy + 3, 10, 5, PAL.out); ell(fx, fy + 3, 9, 4, "#a9a397"); ell(fx, fy + 2, 7, 3, PAL.w1);
-    lg.fillStyle = PAL.out; lg.fillRect(fx - 3, fy - 9, 6, 11);
-    lg.fillStyle = "#cfc9bc"; lg.fillRect(fx - 2, fy - 9, 4, 11); lg.fillStyle = "#e3ddd0"; lg.fillRect(fx - 2, fy - 9, 1, 11);
-    ell(fx, fy - 10, 7, 3, PAL.out); ell(fx, fy - 10, 6, 2, "#bdb7aa"); ell(fx, fy - 10.5, 4, 1, PAL.w2);
-    for (let i = 0; i < 8; i++) {
-      const a = (t * 1.6 + i / 8) % 1, ang = (i / 8) * Math.PI * 2;
-      lg.fillStyle = i % 2 ? PAL.w2 : "#ffffff";
-      lg.fillRect(fx + Math.cos(ang) * a * 10, fy - 14 - Math.sin(a * Math.PI) * 9 + Math.sin(ang) * a * 4, 1, 1);
-    }
-
-    // pond: ripples and ducks
-    for (let i = 0; i < 3; i++) {
-      const k = ((t * 0.35 + i / 3) % 1), rx = 4 + k * 14;
-      lg.strokeStyle = `rgba(220,240,255,${0.35 * (1 - k)})`;
-      lg.beginPath(); lg.ellipse(POND.x - 18 + i * 20, POND.y + (i - 1) * 8, rx, rx * 0.45, 0, 0, 7); lg.stroke();
-    }
+    // ducks: two-block Atari sprites
     for (let i = 0; i < 2; i++) {
-      const a = t * (0.12 + i * 0.05) + i * 2.6, dir = Math.cos(a + Math.PI / 2) * (i ? -1 : 1);
-      const dx = Math.round(POND.x + Math.cos(a) * POND.rx * (0.52 - i * 0.12) * (i ? -1 : 1)), dy = Math.round(POND.y + Math.sin(a) * POND.ry * 0.45);
-      lg.fillStyle = "rgba(220,240,255,.5)"; lg.fillRect(dx - 6 * Math.sign(dir || 1), dy + 2, 4, 1);
-      drawDuck(dx, dy, dir < 0, i);
+      const a = t * (0.12 + i * 0.05) + i * 2.6, left = Math.sin(a) * (i ? -1 : 1) > 0;
+      const dx = POND.x + Math.cos(a) * POND.rx * (0.5 - i * 0.12) * (i ? -1 : 1), dy = POND.y + Math.sin(a) * POND.ry * 0.45;
+      P(dx - 4, dy - 2, 8, 4, i ? PAL.white : "#ac783c"); P(left ? dx - 6 : dx + 2, dy - 6, 4, 4, i ? PAL.white : "#205c20"); P(left ? dx - 8 : dx + 6, dy - 4, 2, 2, "#e8e884");
     }
-    for (const d of dust) { lg.fillStyle = `rgba(222,200,160,${d.life * 0.8})`; const r = Math.ceil(1 + (1 - d.life) * 3); lg.fillRect(Math.round(d.x - r / 2), Math.round(d.y - r / 2), r, r); }
+    for (const d of dust) P(d.x, d.y, AP, AP, `rgba(220,200,150,${d.life})`);
     const focus = nearest();
-    if (focus) {
-      const pulse = 7 + Math.sin(t * 6) * 1;
-      lg.strokeStyle = "rgba(255,214,90,.9)"; lg.beginPath(); lg.ellipse(Math.round(focus.x), Math.round(focus.y), pulse, pulse * 0.4, 0, 0, 7); lg.stroke();
-    }
+    if (focus && Math.floor(t * 4) % 2) { P(focus.x - 8, focus.y - 1, 4, AP, PAL.yellow); P(focus.x + 4, focus.y - 1, 4, AP, PAL.yellow); }
 
-    // y-sorted drawables
     const items = [];
     const inView = (x, y, m = 48) => x > camX - m && x < camX + vw + m && y > camY - m && y < camY + vh + 80;
     for (const id of Object.keys(LAYOUT)) {
       const b = LAYOUT[id], hs = world.houses[id];
-      const art = ART.houses[id];
-      if (art) {
-        const w = b.w * T + 6, h = (art.height * w) / art.width;
-        items.push({ y: (b.y + b.h) * T, draw: () => drawArt(art, b.x * T - 3, (b.y + b.h) * T + 3 - h, w, h) });
-      } else items.push({ y: (b.y + b.h) * T, draw: () => { lg.drawImage(hs.canvas, b.x * T - 1, b.y * T - hs.top - 1); houseLive(id, b, t); } });
+      items.push({ y: (b.y + b.h) * T, draw: () => { lg.drawImage(hs.canvas, b.x * T, b.y * T - hs.top); houseLive(id, b, t); } });
     }
-    const TREE_W = { oak: 36, pine: 28, bush: 20 };
-    for (const tr of trees) if (inView(tr.x, tr.y) && ART.trees[tr.kind]) {
-      const art = ART.trees[tr.kind], w = TREE_W[tr.kind], h = (art.height * w) / art.width;
-      const sway = tr.kind === "bush" ? 0 : Math.sin(t * 1.3 + tr.x * 0.07) * 0.4 + wind * 0.6;
-      items.push({ y: tr.y, draw: () => drawArt(art, tr.x - w / 2 + sway, tr.y + 3 - h, w, h) });
-    }
-    for (const tr of trees) if (inView(tr.x, tr.y) && !ART.trees[tr.kind]) {
+    for (const tr of trees) if (inView(tr.x, tr.y)) {
       const img = world.trees[tr.kind];
-      const dx = tr.x - (img.width >> 1), dy = tr.y - img.height + 3;
-      if (tr.kind === "bush") items.push({ y: tr.y, draw: () => lg.drawImage(img, dx, dy) });
-      else {
-        const sway = Math.round(Math.sin(t * 1.3 + tr.x * 0.07) * 0.6 + wind * 0.8);
-        items.push({ y: tr.y, draw: () => { lg.drawImage(img, 0, 24, img.width, img.height - 24, dx, dy + 24, img.width, img.height - 24); lg.drawImage(img, 0, 0, img.width, 24, dx + sway, dy, img.width, 24); } });
-      }
+      items.push({ y: tr.y, draw: () => lg.drawImage(img, tr.x - 12, tr.y - 30) });
     }
-    const PROP_W = { lamp: 12, bench: 30, mailbox: 14, signpost: 18, barrel: 13, crate: 16, pot: 13, well: 26, tripod: 15, suitcase: 14, noticeboard: 20, cart: 22, fence: 17 };
-    for (const pr of props) if (inView(pr.x, pr.y)) {
-      const art = ART.props[pr.kind];
-      if (art) { const w = PROP_W[pr.kind] || 16, h = (art.height * w) / art.width; items.push({ y: pr.y, draw: () => drawArt(art, pr.x - w / 2, pr.y + 2 - h, w, h) }); continue; }
-      const img = world.props[pr.kind];
-      items.push({ y: pr.y, draw: () => lg.drawImage(img, pr.x - 17, pr.y - 28) });
-    }
+    for (const pr of props) if (inView(pr.x, pr.y)) items.push({ y: pr.y, draw: () => lg.drawImage(world.props[pr.kind], pr.x - 17, pr.y - 28) });
     for (const p of people) if (visible(p) && inView(p.x, p.y)) items.push({ y: p.y, draw: () => drawPerson(p, p.x, p.y) });
     items.push({ y: player.y, draw: () => drawPerson(player, player.x, player.y) });
     items.sort((a, b) => a.y - b.y).forEach((i) => i.draw());
 
-    // smoke and birds
-    for (const s of smoke) { lg.fillStyle = `rgba(235,235,240,${s.life * 0.7})`; const r = 2 + (1 - s.life) * 4; lg.fillRect(Math.round(s.x - r / 2), Math.round(s.y - r / 2), Math.ceil(r), Math.ceil(r)); }
-    lg.fillStyle = PAL.out;
+    for (const s of smoke) P(s.x, s.y, PF, PF, `rgba(200,200,200,${s.life * 0.8})`);
     for (const b of birds) for (let k = 0; k < 3; k++) {
-      const flap = Math.sin(t * 10 + k) > 0 ? -1 : 1;
-      const bx = Math.round(b.x - k * 12), by = Math.round(b.y + (k % 2) * 7);
-      lg.fillRect(bx - 3, by + flap, 3, 1); lg.fillRect(bx, by, 1, 1); lg.fillRect(bx + 1, by + flap, 3, 1);
+      const up = Math.floor(t * 6 + k) % 2, bx = b.x - k * 12, by = b.y + (k % 2) * 6;
+      P(bx - 4, by - up * 2, 4, AP, PAL.black); P(bx, by, AP, AP, PAL.black); P(bx + 2, by - up * 2, 4, AP, PAL.black);
     }
-
-    // butterflies by day, falling leaves, drifting cloud shadows
     const hr = hourNow(), day = hr >= 7 && hr < 19;
-    if (day) for (const b of butterflies) {
-      const flap = Math.sin(t * 18 + b.ph) > 0;
-      lg.fillStyle = PAL.out; lg.fillRect(Math.round(b.x), Math.round(b.y), 1, 2);
-      lg.fillStyle = b.col;
-      if (flap) { lg.fillRect(Math.round(b.x) - 2, Math.round(b.y) - 1, 2, 2); lg.fillRect(Math.round(b.x) + 1, Math.round(b.y) - 1, 2, 2); }
-      else { lg.fillRect(Math.round(b.x) - 1, Math.round(b.y), 1, 1); lg.fillRect(Math.round(b.x) + 1, Math.round(b.y), 1, 1); }
-    }
-    for (const l of leaves) { lg.fillStyle = l.col; lg.fillRect(Math.round(l.x), Math.round(l.y), Math.sin(l.spin) > 0 ? 2 : 1, 1); }
-    lg.globalAlpha = 0.11;
-    for (const c of clouds) lg.drawImage(world.cloud, Math.round(c.x), Math.round(c.y), world.cloud.width * c.s, world.cloud.height * c.s);
-    lg.globalAlpha = 1;
+    if (day) for (const b of butterflies) if (Math.floor(t * 8 + b.ph) % 2) P(b.x, b.y, AP, AP, b.col);
 
     if (showNav) {
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        lg.fillStyle = solid(at(x, y)) ? "rgba(220,40,40,.35)" : "rgba(40,220,90,.22)";
+        lg.fillStyle = solid(at(x, y)) ? "rgba(200,40,40,.35)" : "rgba(40,200,90,.22)";
         lg.fillRect(x * T, y * T, T, T);
       }
     }
     lighting(t, true);
-    if (!day) { // fireflies
-      lg.save(); lg.globalCompositeOperation = "lighter";
-      for (const f of fireflies) {
-        const a = 0.5 + Math.sin(t * 3 + f.ph) * 0.5;
-        lg.fillStyle = `rgba(220,255,120,${a})`; lg.fillRect(Math.round(f.x), Math.round(f.y), 1, 1);
-        lg.fillStyle = `rgba(200,255,100,${a * 0.25})`; lg.fillRect(Math.round(f.x) - 1, Math.round(f.y) - 1, 3, 3);
-      }
-      lg.restore();
-    }
+    if (!day) for (const f of fireflies) if (Math.sin(t * 3 + f.ph) > 0.3) P(f.x, f.y, AP, AP, "#c8fca4");
     blit();
 
-    // text overlay at screen resolution
     for (const p of people) if (visible(p) && dist(p, player) < 7 * T) {
-      nameTag(p.name, p.x, p.y - CHAR_H - 2, p.role === "worker" ? "#f2c230" : p.role === "chief_of_staff" ? "#9fd3ff" : "#fff6dc");
+      nameTag(p.name, p.x, p.y - CHAR_H - 2, p.role === "worker" ? "#fcfc98" : p.role === "chief_of_staff" ? "#90cce8" : "#ececec");
     }
     const pending = new Set(roster.review.filter((r) => r.status === "pending_review").map((r) => r.agent));
-    for (const p of people) if (visible(p) && pending.has(p.id) && !p.bubble) badge(p.x, p.y - CHAR_H - 14 - Math.round(Math.abs(Math.sin(t * 4)) * 3));
+    for (const p of people) if (visible(p) && pending.has(p.id) && !p.bubble) badge(p.x, p.y - CHAR_H - 14 - (Math.floor(t * 4) % 2) * 2);
     for (const p of people) if (visible(p) && p.bubble) speech(p.bubble.text, p.x, p.y - CHAR_H - 10);
     for (const [id, b] of Object.entries(LAYOUT)) {
       const d = doorPx(id);
       if (Math.hypot(d.x - player.x, d.y - player.y) < 5 * T) {
         const h = roster.houses.find((x) => x.id === id);
-        if (h) nameTag(h.label, d.x, (b.y + b.h) * T + 12, "#ffe08a", true);
+        if (h) nameTag(h.label.toUpperCase(), d.x, (b.y + b.h) * T + 12, "#fcfc98", true);
       }
     }
   }
 
   function houseLive(id, b, t) {
-    const X = b.x * T, Y = b.y * T, w = b.w * T, roofH = world.houses[id].roofH;
-    if (id === "town_hall") { // waving flag on the clock tower
-      for (let i = 0; i < 14; i++) {
-        const wave = Math.round(Math.sin(t * 5 + i * 0.55) * 1.5);
-        lg.fillStyle = i < 7 ? "#c0392b" : "#f2c230"; lg.fillRect(X + w / 2 + 1 + i, Y - 58 + wave, 1, 8);
-        lg.fillStyle = PAL.out; lg.fillRect(X + w / 2 + 1 + i, Y - 59 + wave, 1, 1); lg.fillRect(X + w / 2 + 1 + i, Y - 50 + wave, 1, 1);
-      }
-    }
-    if (id === "studio") { // the ring light glows
-      const glow = 0.65 + Math.sin(t * 3) * 0.25, cx = X + w / 2 + 1, cy = Y - 14;
-      lg.fillStyle = `rgba(255,248,210,${glow * 0.22})`; lg.beginPath(); lg.arc(cx, cy, 14, 0, 7); lg.fill();
-      lg.strokeStyle = PAL.out; lg.lineWidth = 4; lg.beginPath(); lg.arc(cx, cy, 8, 0, 7); lg.stroke();
-      lg.strokeStyle = `rgba(255,252,230,${0.75 + glow * 0.25})`; lg.lineWidth = 2; lg.beginPath(); lg.arc(cx, cy, 8, 0, 7); lg.stroke();
-      lg.lineWidth = 1;
-    }
-    const h = hourNow();
-    if (h >= 18.5 || h < 6.5) { // warm windows after dark
-      lg.fillStyle = "rgba(255,206,110,.55)";
-      for (const wx of [12, w - 22]) lg.fillRect(X + wx, Y + roofH + 7, 10, 10);
-    }
+    const X = b.x * T, Y = b.y * T, w = b.w * T, flip = Math.floor(t * 3) % 2;
+    const P = (x, y, ww, hh, col) => { lg.fillStyle = col; lg.fillRect(x, y, ww, hh); };
+    if (id === "town_hall") { P(X + w / 2 + AP, Y - PF * 12 - 16, 12, 6, flip ? "#b03c3c" : "#c05858"); P(X + w / 2 + AP + (flip ? 8 : 6), Y - PF * 12 - 12, 6, 4, "#e8e884"); }
+    if (id === "studio") P(X + w / 2 - PF, Y - PF * 5, PF * 2, PF * 2, flip ? "#fcfc98" : "#ececec");
   }
 
-  /** Time-of-day tint, then lamp and window glow on top. */
+  /** Night swaps to a darker palette feel; lamps glow in stepped squares. */
   function lighting(t, town) {
     const h = hourNow();
     let tint = null, a = 0;
-    if (h >= 20 || h < 5.5) { tint = "#2a3570"; a = 0.55; }
-    else if (h >= 18) { tint = "#c86a50"; a = ((h - 18) / 2) * 0.35; }
-    else if (h < 7) { tint = "#d88a6a"; a = ((7 - h) / 1.5) * 0.3; }
+    if (h >= 20 || h < 5.5) { tint = "#1c209c"; a = 0.5; }
+    else if (h >= 18) { tint = "#c06848"; a = ((h - 18) / 2) * 0.3; }
+    else if (h < 7) { tint = "#d0805c"; a = ((7 - h) / 1.5) * 0.25; }
     if (!tint) return;
     lg.save(); lg.setTransform(1, 0, 0, 1, 0, 0);
     lg.globalCompositeOperation = "multiply"; lg.globalAlpha = a; lg.fillStyle = tint; lg.fillRect(0, 0, lo.width, lo.height);
     lg.restore();
     if (!town || a < 0.3) return;
     lg.save(); lg.globalCompositeOperation = "lighter";
-    for (const pr of props) if (pr.kind === "lamp") {
-      const gr = lg.createRadialGradient(pr.x, pr.y - 22, 1, pr.x, pr.y - 22, 34 + Math.sin(t * 3) * 1.5);
-      gr.addColorStop(0, "rgba(255,210,120,.55)"); gr.addColorStop(1, "rgba(255,210,120,0)");
-      lg.fillStyle = gr; lg.fillRect(pr.x - 40, pr.y - 60, 80, 80);
+    for (const pr of props) if (pr.kind === "lamp") for (let k = 3; k >= 1; k--) {
+      lg.fillStyle = `rgba(232,232,132,${0.07 * (4 - k)})`; lg.fillRect(pr.x - k * 10, pr.y - 22 - k * 8, k * 20, k * 16);
+    }
+    for (const [, b] of Object.entries(LAYOUT)) {
+      const roofH = Math.round((b.h * T * 0.5) / PF) * PF;
+      lg.fillStyle = "rgba(252,252,152,.35)";
+      lg.fillRect(b.x * T + PF * 3, b.y * T + roofH + PF * 2, PF * 3, PF * 3); lg.fillRect((b.x + b.w) * T - PF * 6, b.y * T + roofH + PF * 2, PF * 3, PF * 3);
     }
     lg.restore();
   }
 
-  function drawDuck(x, y, left, i) {
-    const bob = Math.round(Math.sin(performance.now() / 400 + i) * 0.5);
-    const P = (dx, dy, w, h, col) => { lg.fillStyle = col; lg.fillRect(left ? x - dx - w : x + dx, y + dy + bob, w, h); };
-    P(-5, -2, 9, 5, PAL.out); P(-4, -1, 7, 3, i ? "#fbf8ef" : "#8a6a48"); P(-4, 1, 7, 1, i ? "#d9d2c2" : "#6a4f34");
-    P(1, -5, 4, 4, PAL.out); P(2, -4, 2, 2, i ? "#fbf8ef" : "#2f7a4a"); P(4, -3, 2, 1, "#f2a530"); P(3, -4, 1, 1, PAL.out);
-  }
-  function badge(wx, wy) {
-    const [sx, sy] = toScreen(wx, wy);
-    const s = Math.round(16 * dpr), x = Math.round(sx - s / 2), y = Math.round(sy - s);
-    ctx.fillStyle = "#1d1420"; ctx.fillRect(x - dpr, y - dpr, s + 2 * dpr, s + 2 * dpr);
-    ctx.fillStyle = "#f2c230"; ctx.fillRect(x, y, s, s);
-    ctx.fillStyle = "#1d1420"; ctx.fillRect(x + s / 2 - dpr, y + 3 * dpr, 2 * dpr, 7 * dpr); ctx.fillRect(x + s / 2 - dpr, y + 12 * dpr, 2 * dpr, 2 * dpr);
-  }
-  let vignette = null, vignetteKey = "";
+  // CRT finish: scanlines on every Atari pixel row, plus a soft tube vignette.
+  let crt = null, crtKey = "";
   function blit() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    if (HD) ctx.drawImage(lo, 0, 0); else ctx.drawImage(lo, 0, 0, lo.width * S, lo.height * S);
-    const key = `${cv.width}x${cv.height}`;
-    if (key !== vignetteKey) {
-      vignetteKey = key;
-      vignette = ctx.createRadialGradient(cv.width / 2, cv.height / 2, Math.min(cv.width, cv.height) * 0.45, cv.width / 2, cv.height / 2, Math.hypot(cv.width, cv.height) * 0.6);
-      vignette.addColorStop(0, "rgba(16,8,24,0)"); vignette.addColorStop(1, "rgba(16,8,24,.38)");
+    ctx.drawImage(lo, 0, 0, lo.width * S, lo.height * S);
+    const key = `${cv.width}x${cv.height}x${S}`;
+    if (key !== crtKey) {
+      crtKey = key;
+      const [line, lgc] = canvas(4, S * AP);
+      lgc.fillStyle = "rgba(0,0,0,.22)"; lgc.fillRect(0, S * AP - Math.max(1, Math.round(S * 0.6)), 4, Math.max(1, Math.round(S * 0.6)));
+      const vig = ctx.createRadialGradient(cv.width / 2, cv.height / 2, Math.min(cv.width, cv.height) * 0.4, cv.width / 2, cv.height / 2, Math.hypot(cv.width, cv.height) * 0.62);
+      vig.addColorStop(0, "rgba(0,0,0,0)"); vig.addColorStop(1, "rgba(0,0,0,.45)");
+      crt = { lines: ctx.createPattern(line, "repeat"), vig };
     }
-    ctx.fillStyle = vignette; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.save(); ctx.translate(0, ((-camY * S) % (S * AP) + S * AP) % (S * AP));
+    ctx.fillStyle = crt.lines; ctx.fillRect(0, -S * AP, cv.width, cv.height + S * AP * 2);
+    ctx.restore();
+    ctx.fillStyle = crt.vig; ctx.fillRect(0, 0, cv.width, cv.height);
   }
 
   function nameTag(text, wx, wy, color, sign = false) {
     const [sx, sy] = toScreen(wx, wy);
-    const fs = Math.round(11 * dpr);
-    ctx.font = `600 ${fs}px ${UI_FONT}`;
-    const w = Math.ceil(ctx.measureText(text).width) + 10 * dpr, h = fs + 6 * dpr;
+    const fs = Math.round(8 * dpr);
+    ctx.font = `${fs}px ${UI_FONT}`;
+    const w = Math.ceil(ctx.measureText(text).width) + 8 * dpr, h = fs + 8 * dpr;
     const x = Math.round(sx - w / 2), y = Math.round(sy - h);
-    ctx.fillStyle = sign ? "rgba(58,36,22,.92)" : "rgba(24,18,32,.82)"; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = sign ? "#c99a5b" : "rgba(255,255,255,.18)"; ctx.fillRect(x, y, w, dpr); ctx.fillRect(x, y + h - dpr, w, dpr);
-    ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.fillText(text, x + 5 * dpr, y + h / 2 + dpr * 0.5);
+    ctx.fillStyle = "#000"; ctx.fillRect(x, y, w, h);
+    if (sign) { ctx.fillStyle = "#b03c3c"; ctx.fillRect(x, y + h - 2 * dpr, w, 2 * dpr); }
+    ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.fillText(text, x + 4 * dpr, y + h / 2 + dpr);
   }
   function speech(text, wx, wy) {
     const [sx, sy] = toScreen(wx, wy);
-    const fs = Math.round(12 * dpr);
-    ctx.font = `500 ${fs}px ${UI_FONT}`;
-    const msg = text.length > 34 ? text.slice(0, 33) + "…" : text;
-    const w = Math.ceil(ctx.measureText(msg).width) + 14 * dpr, h = fs + 10 * dpr;
+    const fs = Math.round(8 * dpr);
+    ctx.font = `${fs}px ${UI_FONT}`;
+    const msg = text.length > 26 ? text.slice(0, 25) + "…" : text;
+    const w = Math.ceil(ctx.measureText(msg).width) + 12 * dpr, h = fs + 12 * dpr;
     const x = Math.round(sx - w / 2), y = Math.round(sy - h - 6 * dpr);
-    ctx.fillStyle = "#1d1420"; ctx.fillRect(x - dpr, y - dpr, w + 2 * dpr, h + 2 * dpr);
-    ctx.fillStyle = "#fffaf0"; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = "#1d1420"; ctx.fillRect(sx - 3 * dpr, y + h + dpr, 6 * dpr, 2 * dpr); ctx.fillRect(sx - dpr, y + h + 3 * dpr, 2 * dpr, 2 * dpr);
-    ctx.fillStyle = "#fffaf0"; ctx.fillRect(sx - 2 * dpr, y + h, 4 * dpr, 2 * dpr);
-    ctx.fillStyle = "#2a2030"; ctx.textBaseline = "middle"; ctx.fillText(msg, x + 7 * dpr, y + h / 2 + dpr * 0.5);
+    ctx.fillStyle = "#ececec"; ctx.fillRect(x, y, w, h); ctx.fillRect(sx - 2 * dpr, y + h, 4 * dpr, 4 * dpr);
+    ctx.fillStyle = "#000"; ctx.textBaseline = "middle"; ctx.fillText(msg, x + 6 * dpr, y + h / 2 + dpr);
+  }
+  function badge(wx, wy) {
+    const [sx, sy] = toScreen(wx, wy);
+    const s = Math.round(14 * dpr), x = Math.round(sx - s / 2), y = Math.round(sy - s);
+    ctx.fillStyle = "#e8e884"; ctx.fillRect(x, y, s, s);
+    ctx.fillStyle = "#000"; ctx.fillRect(x + s / 2 - dpr, y + 3 * dpr, 2 * dpr, 5 * dpr); ctx.fillRect(x + s / 2 - dpr, y + 10 * dpr, 2 * dpr, 2 * dpr);
   }
 
   // ------------------------------------------------------------------ interior rendering
   const roomCache = {};
-  /** One wall feature per house, in the free wall space right of the fireplace. */
-  function wallDecor(g, id, P) {
-    const x = 144, y = 6;
-    const frame = (w, h) => { P(x - 1, y - 1, w + 2, h + 2, PAL.out); P(x, y, w, h, PAL.wd1); };
-    switch (id) {
-      case "travel": frame(40, 26); P(x + 2, y + 2, 36, 22, "#7fb8e0");
-        for (const [mx, my, mw, mh] of [[5, 6, 8, 7], [16, 4, 6, 10], [25, 8, 10, 8], [8, 15, 6, 5]]) P(x + mx, y + my, mw, mh, "#7cbf6a");
-        P(x + 10, y + 9, 2, 2, "#d8383a"); P(x + 28, y + 11, 2, 2, "#d8383a"); P(x + 18, y + 7, 2, 2, "#d8383a"); break;
-      case "bank": P(x + 4, y - 1, 30, 30, PAL.out); P(x + 5, y, 28, 28, "#6f7b86"); g.fillStyle = "#9aa6b1"; g.beginPath(); g.arc(x + 19, y + 14, 9, 0, 7); g.fill();
-        P(x + 18, y + 6, 2, 16, "#55606b"); P(x + 11, y + 13, 16, 2, "#55606b"); P(x + 6, y + 2, 3, 3, "#cfd6dd"); break;
-      case "inbox": frame(40, 28); for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { P(x + 2 + c * 9, y + 2 + r * 9, 8, 8, "#3b2414"); if ((r + c) % 2) P(x + 3 + c * 9, y + 5 + r * 9, 6, 4, "#fbf8ef"); } break;
-      case "studio": frame(40, 26); P(x + 2, y + 2, 36, 22, "#3aa85a"); P(x + 14, y + 8, 12, 10, "#2e8a4a"); P(x + 2, y + 2, 36, 2, "#4cc06c"); break;
-      case "workshop": frame(40, 28); P(x + 2, y + 2, 36, 24, "#1e2a24"); for (let i = 0; i < 4; i++) P(x + 4, y + 4 + i * 5, 32, 4, "#2b3a32"); break;
-      case "library": case "archive": frame(40, 28); for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { P(x + 2 + c * 9, y + 2 + r * 9, 8, 8, id === "archive" ? "#8e6c8a" : "#3b2414"); P(x + 4 + c * 9, y + 4 + r * 9, 4, 2, "#d8c9a0"); } break;
-      case "recruiting": frame(40, 26); P(x + 2, y + 2, 36, 22, "#c9a46a");
-        for (const [nx, ny, c] of [[4, 4, "#fbf8ef"], [16, 6, "#ffe08a"], [28, 4, "#bfe7ff"], [8, 14, "#ffe08a"], [22, 15, "#fbf8ef"]]) { P(x + nx, y + ny, 8, 7, c); P(x + nx + 3, y + ny, 2, 1, "#d8383a"); } break;
-      case "home": frame(36, 24); P(x + 2, y + 2, 32, 20, "#9fd3ff"); P(x + 2, y + 14, 32, 8, "#5a9e48"); P(x + 24, y + 5, 5, 5, "#ffd34d"); P(x + 6, y + 9, 10, 5, "#3d7a3a"); break;
-      case "town_hall": for (const bx of [x, x + 22]) { P(bx, y, 16, 28, "#9b3a32"); P(bx + 2, y + 2, 12, 24, "#b8473e"); P(bx + 5, y + 8, 6, 6, "#f2c230"); P(bx, y + 28, 16, 3, "#c9a46a"); } break;
-      default: frame(32, 22); P(x + 2, y + 2, 28, 18, "#e8c48a"); P(x + 6, y + 8, 10, 10, "#c0504d");
-    }
-    // wall clock
-    P(7, 7, 12, 12, PAL.out); P(8, 8, 10, 10, "#fbf8ef"); P(12, 9, 1, 1, PAL.out);
-  }
   function roomBackdrop(id) {
     if (roomCache[id]) return roomCache[id];
-    const b = LAYOUT[id], r = mulberry32(hash(id) + 1);
+    const b = LAYOUT[id];
     const [c, g] = canvas(ROOM_W, ROOM_H + 4);
     const P = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
-    const paper = shade(b.wall, -0.04), paperD = shade(b.wall, -0.1);
-    P(0, 0, ROOM_W, WALL_H, paper);
-    for (let x = 0; x < ROOM_W; x += 8) P(x, 0, 3, WALL_H - 12, paperD);
-    P(0, WALL_H - 12, ROOM_W, 10, PAL.wd2); for (let x = 0; x < ROOM_W; x += 12) P(x, WALL_H - 12, 1, 10, PAL.wd0);
-    P(0, WALL_H - 12, ROOM_W, 1, shade(PAL.wd2, 0.15)); P(0, WALL_H - 2, ROOM_W, 2, PAL.wd1);
-    P(0, 0, ROOM_W, 3, shade(b.roof, -0.2));
-    // floor planks
-    for (let y = WALL_H, row = 0; y < ROOM_H; y += 6, row++) {
-      for (let x = -((row * 17) % 30); x < ROOM_W; x += 30) {
-        P(x, y, 30, 6, ["#9a6538", "#8f5d33", "#a46d3e"][(r() * 3) | 0]);
-        P(x, y, 1, 6, "#6e4224");
-      }
-      P(0, y + 5, ROOM_W, 1, "#6e4224");
-    }
-    P(0, WALL_H, ROOM_W, 3, "rgba(0,0,0,.25)");
-    // windows with light shafts
-    for (const wx of [24, ROOM_W - 52]) {
-      P(wx - 1, 5, 30, 24, PAL.wd1); P(wx + 1, 7, 26, 20, "#9fd3ff"); P(wx + 3, 9, 6, 1, "#e6f6ff"); P(wx + 3, 10, 1, 4, "#e6f6ff");
-      P(wx + 13, 7, 2, 20, PAL.wd1); P(wx + 1, 16, 26, 2, PAL.wd1); P(wx - 2, 29, 32, 2, PAL.wd2);
-      g.fillStyle = "rgba(255,245,200,.10)"; g.beginPath(); g.moveTo(wx + 1, WALL_H); g.lineTo(wx + 27, WALL_H); g.lineTo(wx + 47, ROOM_H); g.lineTo(wx + 15, ROOM_H); g.fill();
-    }
-    // bookshelf
-    P(70, 4, 30, WALL_H - 6, PAL.wd1); P(72, 6, 26, WALL_H - 10, "#3b2414");
-    for (let s = 0; s < 3; s++) {
-      for (let x = 73; x < 97;) { const bw = 2 + ((r() * 2) | 0), bh = 7 + ((r() * 3) | 0); P(x, 6 + s * 10 + (10 - bh), bw, bh, ["#c0504d", "#3a7d44", "#5b5ea6", "#e07b39", "#d9c27a"][(r() * 5) | 0]); x += bw + (r() < 0.2 ? 1 : 0); }
-      P(72, 15 + s * 10, 26, 2, PAL.wd2);
-    }
-    // fireplace (fire animated live)
-    P(ROOM_W / 2 - 18, 6, 36, WALL_H - 4, "#8b4b3a");
-    for (let y = 8; y < WALL_H - 2; y += 4) for (let x = ROOM_W / 2 - 18 + ((y / 4) % 2) * 3; x < ROOM_W / 2 + 18; x += 6) P(x, y, 1, 3, "#6e382b");
-    P(ROOM_W / 2 - 18, 6, 36, 3, "#5a5a62"); P(ROOM_W / 2 - 10, 18, 20, WALL_H - 16, "#1a1010");
-    // rug with border
-    P(ROOM_W / 2 - 46, 84, 92, 28, shade(b.roof, -0.05)); P(ROOM_W / 2 - 43, 87, 86, 22, shade(b.roof, 0.08));
-    for (let x = ROOM_W / 2 - 40; x < ROOM_W / 2 + 40; x += 6) P(x, 97, 3, 2, shade(b.roof, -0.12));
-    // doormat
-    P(ROOM_W / 2 - 12, ROOM_H - 6, 24, 6, "#6b5a3a"); P(ROOM_W / 2 - 12, ROOM_H, 24, 4, PAL.out);
-    wallDecor(g, id, P);
-    roomCache[id] = c;
-    return c;
+    const wall2 = ntsc(shade(b.wall, -0.1));
+    for (let y = 0; y < WALL_H; y += PF) P(0, y, ROOM_W, PF, (y / PF) % 2 ? b.wall : wall2);
+    P(0, WALL_H - PF, ROOM_W, PF, PAL.wood);
+    for (let y = WALL_H; y < ROOM_H; y += 8) for (let x = 0; x < ROOM_W; x += 8) P(x, y, 8, 8, ((x + y) / 8) % 2 ? PAL.wood : "#985c28");
+    for (const wx of [20, ROOM_W - 44]) { P(wx, 8, 24, 20, "#90b4ec"); P(wx + 11, 8, 2, 20, b.wall); P(wx, 17, 24, 2, b.wall); }
+    P(64, 4, 28, WALL_H - 8, PAL.woodDk);
+    for (let s = 0; s < 3; s++) ["#b03c3c", "#5c9c5c", "#4c3cac", "#e8e884", "#ececec", "#d0805c"].forEach((col, i) => P(66 + i * 4, 6 + s * 10, 2, 8, col));
+    P(ROOM_W / 2 - 18, 6, 36, WALL_H - 6, PAL.grey); P(ROOM_W / 2 - 10, 16, 20, WALL_H - 16, PAL.black);
+    P(ROOM_W / 2 - 44, 86, 88, 24, b.roof); P(ROOM_W / 2 - 40, 90, 80, 16, b.roof2);
+    P(ROOM_W / 2 - 12, ROOM_H, 24, 4, PAL.black);
+    // the house's own wall feature
+    const x = 146, y = 6;
+    if (EMBLEMS[b.sign]) { P(x, y, 36, 26, PAL.black); const [rows, colors] = EMBLEMS[b.sign]; blocks(g, x + 6, y + 5, rows, colors, 6); }
+    return (roomCache[id] = c);
   }
 
   function renderRoom(now) {
     const id = scene, t = now / 1000;
     const zoom = Math.min(innerWidth / (ROOM_W + 24), (innerHeight - 80) / (ROOM_H + 24));
     setView(ROOM_W, ROOM_H + 4, Math.max(1.5, zoom), player.x, player.y - 20);
-    lg.fillStyle = "#120e18"; lg.fillRect(camX, camY, lo.width, lo.height);
-    const painted = ART.rooms[id];
-    if (painted) { // cover the room, cropping evenly if the painting is not exactly 2:1
-      const k = Math.max(painted.width / ROOM_W, painted.height / (ROOM_H + 4)), sw = ROOM_W * k, sh = (ROOM_H + 4) * k;
-      drawArt(painted, (painted.width - sw) / 2, (painted.height - sh) / 2, sw, sh, 0, 0, ROOM_W, ROOM_H + 4);
-    }
-    else lg.drawImage(roomBackdrop(id), 0, 0);
-    // fire
-    if (!painted) for (let i = 0; i < 6; i++) {
-      const f = Math.sin(t * 11 + i * 1.7) * 2;
-      lg.fillStyle = i % 2 ? "#ffb347" : "#ff6b35"; lg.fillRect(ROOM_W / 2 - 8 + i * 3, WALL_H - 10 - f, 3, 8 + f);
-      lg.fillStyle = "#ffe08a"; lg.fillRect(ROOM_W / 2 - 7 + i * 3, WALL_H - 5, 1, 3);
-    }
-    lg.save(); lg.globalCompositeOperation = "lighter";
-    const gr = lg.createRadialGradient(ROOM_W / 2, WALL_H, 2, ROOM_W / 2, WALL_H, 46 + Math.sin(t * 7) * 2);
-    gr.addColorStop(0, "rgba(255,150,60,.35)"); gr.addColorStop(1, "rgba(255,150,60,0)");
-    lg.fillStyle = gr; lg.fillRect(ROOM_W / 2 - 50, WALL_H - 50, 100, 100); lg.restore();
+    lg.fillStyle = PAL.black; lg.fillRect(camX, camY, lo.width, lo.height);
+    lg.drawImage(roomBackdrop(id), 0, 0);
+    const P = (x, y, w, h, col) => { lg.fillStyle = col; lg.fillRect(x, y, w, h); };
+    const f = Math.floor(t * 6) % 3;
+    [["#d0805c", 0], ["#e8e884", 1], ["#c05858", 2]].forEach(([col, k]) => P(ROOM_W / 2 - 8 + k * 6, WALL_H - 12 + ((f + k) % 3) * 2, 4, 10 - ((f + k) % 3) * 2, col));
 
     const items = [];
-    const P = (x, y, w, h, col) => { lg.fillStyle = col; lg.fillRect(x, y, w, h); };
-    const plant = (x) => items.push({ y: WALL_H + 14, draw: () => {
-      P(x + 3, WALL_H + 6, 8, 8, "#a0522d"); P(x + 3, WALL_H + 6, 8, 2, "#c0703d");
-      for (const [dx, dy, c] of [[0, -6, "#3d7a3a"], [5, -10, "#4b8c41"], [9, -5, "#3d7a3a"], [3, -3, "#5a9e48"], [7, -8, "#79b85a"]]) P(x + dx, WALL_H + 6 + dy, 5, 5, c);
-    } });
+    const plant = (x) => items.push({ y: WALL_H + 14, draw: () => { P(x + 2, WALL_H + 6, 10, 8, "#ac5030"); P(x, WALL_H - 6, 14, 12, PAL.grassA); P(x + 4, WALL_H - 10, 6, 4, PAL.leafHi); } });
     if (id === "town_hall") {
-      if (!painted) items.push({ y: 84, draw: () => {
-        P(62, 66, 116, 18, PAL.out); P(63, 67, 114, 15, "#7a4a2a"); P(63, 67, 114, 3, "#9c6639");
-        for (let i = 0; i < 4; i++) { P(70 + i * 28, 72, 12, 7, "#f4ecd8"); P(72 + i * 28, 74, 8, 1, "#9a8a6a"); }
-      } });
-      if (!painted) P(ROOM_W / 2 - 8, 3, 16, 3, "#c9a46a"); // banner
+      items.push({ y: 84, draw: () => { P(62, 66, 116, 16, PAL.woodDk); P(62, 66, 116, 4, PAL.woodLt); } });
       const seats = seatPositions();
       people.filter((p) => p.inHall).forEach((p, i) => {
         const s = seats[i % seats.length];
-        // behind a painted table, the far side is hidden below the table top
-        items.push({ y: s.y, draw: () => drawPerson(p, s.x, s.y, { sitting: true, dir: s.dir, clipY: painted && s.dir === 0 ? 68 : undefined }) });
+        items.push({ y: s.y, draw: () => drawPerson(p, s.x, s.y, { sitting: true, dir: s.dir }) });
       });
     } else {
-      if (!painted) { plant(14); plant(ROOM_W - 28); }
-      if (!painted) items.push({ y: 80, draw: () => {
-        P(96, 66, 48, 14, PAL.out); P(97, 67, 46, 11, "#6a3f22"); P(97, 67, 46, 3, "#8a5631");
-        P(112, 58, 16, 10, PAL.out); P(113, 59, 14, 7, "#7fd1ff"); P(114, 60, 4, 1, "#e6f6ff"); P(119, 67, 2, 2, "#3a3a44");
-        P(100, 68, 6, 3, "#f4ecd8"); P(134, 66, 4, 4, "#e0485c");
-        themedProp(id, t);
+      plant(12); plant(ROOM_W - 26);
+      items.push({ y: 82, draw: () => {
+        P(96, 68, 48, 14, PAL.woodDk); P(96, 68, 48, 4, PAL.woodLt);
+        P(112, 58, 16, 10, PAL.dgrey); P(114, 60, 12, 6, Math.floor(t * 2) % 2 ? "#90cce8" : "#a4e0fc");
       } });
-      // blinking server LEDs in the workshop
-      if (id === "workshop" && !painted) for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) {
-        lg.fillStyle = Math.sin(t * (3 + j) + i * 1.7 + j) > 0.2 ? (j % 2 ? "#6fcf7f" : "#f2c230") : "#203028";
-        lg.fillRect(150 + j * 5, 12 + i * 5, 2, 2);
-      }
       for (const p of people) if (p.role === "director" && p.house === id && p.inside) {
-        items.push({ y: DESK.y, draw: () => drawPerson(p, DESK.x, DESK.y, { sitting: true, dir: 0, clipY: painted ? 63 : undefined }) });
+        items.push({ y: DESK.y - 2, draw: () => drawPerson(p, DESK.x, DESK.y - 2, { sitting: true, dir: 0 }) });
       }
     }
-    // live wall-clock hands (real time)
-    const d = new Date(), mA = (d.getMinutes() / 60) * Math.PI * 2, hA = ((d.getHours() % 12) / 12) * Math.PI * 2 + mA / 12;
-    lg.fillStyle = painted ? "rgba(0,0,0,0)" : PAL.out;
-    for (let k = 0; k < 4; k++) lg.fillRect(Math.round(12.5 + Math.sin(mA) * k), Math.round(12.5 - Math.cos(mA) * k), 1, 1);
-    for (let k = 0; k < 3; k++) lg.fillRect(Math.round(12.5 + Math.sin(hA) * k), Math.round(12.5 - Math.cos(hA) * k), 1, 1);
     const c = chief();
     if (c && c.rx !== undefined) items.push({ y: c.ry, draw: () => drawPerson(c, c.rx, c.ry) });
     items.push({ y: player.y, draw: () => drawPerson(player, player.x, player.y) });
@@ -1463,65 +984,31 @@
     blit();
     const tags = [];
     if (id === "town_hall") people.filter((p) => p.inHall).forEach((p, i) => { const s = seatPositions()[i % 8]; tags.push([p, s.x, s.y]); });
-    else for (const p of people) if (p.role === "director" && p.house === id && p.inside) tags.push([p, DESK.x, DESK.y]);
-    for (const [p, x, y] of tags) nameTag(p.name, x, y - CHAR_H - 1, "#fff6dc");
-    if (c && c.rx !== undefined) nameTag(c.name, c.rx, c.ry - CHAR_H - 2, "#9fd3ff");
+    else for (const p of people) if (p.role === "director" && p.house === id && p.inside) tags.push([p, DESK.x, DESK.y - 2]);
+    for (const [p, x, y] of tags) nameTag(p.name, x, y - CHAR_H - 1, "#ececec");
+    if (c && c.rx !== undefined) nameTag(c.name, c.rx, c.ry - CHAR_H - 2, "#90cce8");
     for (const [p, x, y] of tags) if (p.bubble) speech(p.bubble.text, x, y - CHAR_H - 10);
   }
 
-  function themedProp(id, t) {
-    const P = (x, y, w, h, col) => { lg.fillStyle = col; lg.fillRect(x, y, w, h); };
-    const x = ROOM_W - 64, y = WALL_H + 2;
-    switch (id) {
-      case "studio": {
-        const glow = 0.7 + Math.sin(t * 3) * 0.2;
-        lg.strokeStyle = PAL.out; lg.lineWidth = 3; lg.beginPath(); lg.arc(x, y + 2, 6, 0, 7); lg.stroke();
-        lg.strokeStyle = `rgba(255,250,225,${glow})`; lg.lineWidth = 1.5; lg.beginPath(); lg.arc(x, y + 2, 6, 0, 7); lg.stroke(); lg.lineWidth = 1;
-        P(x - 1, y + 8, 2, 14, "#2b2b33"); P(x - 5, y + 21, 10, 2, "#2b2b33"); break;
-      }
-      case "bank": P(x - 9, y, 18, 18, PAL.out); P(x - 8, y + 1, 16, 16, "#5b6670"); P(x - 7, y + 2, 14, 14, "#6f7b86"); lg.fillStyle = "#cfd6dd"; lg.beginPath(); lg.arc(x, y + 9, 4, 0, 7); lg.fill(); P(x - 1, y + 8, 2, 2, PAL.out); break;
-      case "travel": P(x - 1, y + 12, 2, 8, PAL.wd1); P(x - 5, y + 19, 10, 2, PAL.wd1); lg.fillStyle = PAL.out; lg.beginPath(); lg.arc(x, y + 5, 8, 0, 7); lg.fill(); lg.fillStyle = "#3a7bd5"; lg.beginPath(); lg.arc(x, y + 5, 7, 0, 7); lg.fill(); P(x - 4, y + 1, 4, 3, "#4fae5a"); P(x + 1, y + 6, 4, 3, "#4fae5a"); break;
-      case "inbox": P(x - 9, y, 18, 20, PAL.out); P(x - 8, y + 1, 16, 18, "#9aa3ad"); for (let i = 0; i < 3; i++) { P(x - 7, y + 2 + i * 6, 14, 5, "#b9c1c9"); P(x - 2, y + 4 + i * 6, 4, 1, PAL.out); } break;
-      case "workshop": P(x - 11, y + 2, 22, 14, PAL.out); P(x - 10, y + 3, 20, 12, "#1e2a24"); for (let i = 0; i < 3; i++) P(x - 8, y + 5 + i * 3, ((t * 9 + i * 5) % 15) | 0, 1, "#6fcf7f"); break;
-      case "library": case "archive": P(x - 9, y, 18, 20, PAL.out); P(x - 8, y + 1, 16, 18, "#8e6c8a"); for (let i = 0; i < 3; i++) { P(x - 7, y + 2 + i * 6, 14, 5, "#d8c9a0"); P(x - 1, y + 4 + i * 6, 2, 1, PAL.out); } break;
-      case "recruiting": P(x - 13, y + 2, 26, 12, PAL.out); P(x - 12, y + 3, 24, 10, "#f2c230"); { let cx = x - 11; for (const ch of "HIRING") { bitmap(lg, cx, y + 5, FONT[ch], { "#": PAL.out }); cx += 4; } } break;
-      case "home": P(x - 10, y + 4, 20, 14, PAL.out); P(x - 9, y + 5, 18, 12, "#c0504d"); P(x - 9, y + 5, 18, 3, "#d9706c"); break;
-    }
-  }
-
   function updateFx(dt) {
-    const t = performance.now() / 1000;
-    wind = Math.max(0, Math.sin(t * 0.21)) ** 6; // an occasional gust
-    for (const c of clouds) { c.x += dt * (6 + wind * 10); if (c.x > W * T + 60) { c.x = -world.cloud.width * c.s - 40; c.y = rand() * H * T; } }
-    for (const b of butterflies) {
-      b.ph += dt; b.x += Math.cos(b.ph * 0.7 + b.seed) * dt * 14; b.y += Math.sin(b.ph * 1.1 + b.seed) * dt * 9;
-      if (Math.hypot(b.x - b.hx, b.y - b.hy) > 40) { b.x += (b.hx - b.x) * dt; b.y += (b.hy - b.y) * dt; }
-    }
-    for (const f of fireflies) { f.ph += dt; f.x += Math.cos(f.ph * 0.6 + f.seed) * dt * 6; f.y += Math.sin(f.ph * 0.8 + f.seed) * dt * 5; }
-    if (rand() < dt * (0.6 + wind * 6)) {
-      const tr = trees[(rand() * trees.length) | 0];
-      if (tr && tr.kind === "oak") leaves.push({ x: tr.x - 8 + rand() * 16, y: tr.y - 34 + rand() * 10, vy: 8 + rand() * 6, spin: rand() * 6, col: rand() < 0.5 ? "#e0a030" : PAL.g2, life: 4 });
-    }
-    for (const l of leaves) { l.y += l.vy * dt; l.x += (Math.sin(l.spin) * 6 + wind * 18) * dt; l.spin += dt * 4; l.life -= dt; }
-    for (let i = leaves.length - 1; i >= 0; i--) if (leaves[i].life <= 0) leaves.splice(i, 1);
-    for (const d of dust) { d.life -= dt * 2.2; d.y -= dt * 4; }
-    while (dust.length && dust[0].life <= 0) dust.shift();
-    if (rand() < dt * 3) for (const [id, b] of Object.entries(LAYOUT)) if (id !== "town_hall" && id !== "studio" && rand() < 0.5)
-      smoke.push({ x: b.x * T + b.w * T - 20 + rand() * 4, y: b.y * T - 12, life: 1 });
-    for (const s of smoke) { s.y -= dt * 9; s.x += dt * (3 + Math.sin(s.y / 6)); s.life -= dt * 0.28; }
+    if (rand() < dt * 3) for (const [id, b] of Object.entries(LAYOUT)) if (id !== "town_hall" && rand() < 0.4)
+      smoke.push({ x: (b.x + b.w) * T - PF * 5, y: b.y * T - PF * 4, life: 1 });
+    for (const s of smoke) { s.y -= dt * 10; s.x += dt * 3; s.life -= dt * 0.35; }
     while (smoke.length && smoke[0].life <= 0) smoke.shift();
-    for (const s of sparkles) s.life -= dt * 2;
-    while (sparkles.length && sparkles[0].life <= 0) sparkles.shift();
+    for (const b of butterflies) { b.ph += dt; b.x += Math.cos(b.ph * 0.7 + b.seed) * dt * 14; b.y += Math.sin(b.ph * 1.1 + b.seed) * dt * 9; if (Math.hypot(b.x - b.hx, b.y - b.hy) > 40) { b.x += (b.hx - b.x) * dt; b.y += (b.hy - b.y) * dt; } }
+    for (const f of fireflies) { f.ph += dt; f.x += Math.cos(f.ph * 0.6 + f.seed) * dt * 6; f.y += Math.sin(f.ph * 0.8 + f.seed) * dt * 5; }
+    for (const d of dust) d.life -= dt * 2.5;
+    while (dust.length && dust[0].life <= 0) dust.shift();
     if (birds.length < 1 && rand() < dt * 0.08) birds.push({ x: -20, y: 20 + rand() * (H * T - 80), v: 40 + rand() * 20 });
     for (const b of birds) b.x += b.v * dt;
     for (let i = birds.length - 1; i >= 0; i--) if (birds[i].x > W * T + 40) birds.splice(i, 1);
   }
 
   function updateHint() {
-    let text = "←↑↓→ walk · Shift run · T talk · MM Chief of Staff · G nav mesh · ? help";
+    let text = "ARROWS WALK · SHIFT RUN · T TALK · MM CHIEF · G MAP GRID · ? HELP";
     const n = nearest();
-    if (n) text = `Press T to talk to ${n.name} (${n.title})`;
-    else if (scene !== "town") text = "Walk out the bottom door to leave";
+    if (n) text = `PRESS T TO TALK TO ${n.name.toUpperCase()}`;
+    else if (scene !== "town") text = "WALK OUT THE BOTTOM DOOR TO LEAVE";
     if ($("hint").textContent !== text) $("hint").textContent = text;
     $("touch-talk")?.classList.toggle("ready", !!n);
   }
@@ -1548,14 +1035,51 @@
     chatWith = p;
     $("chat-name").textContent = p.name;
     $("chat-title").textContent = `${p.title} · ${p.model}${p.connectors?.length ? " · " + p.connectors.join(", ") : ""}`;
-    const pc = $("portrait").getContext("2d"); pc.imageSmoothingEnabled = false; pc.clearRect(0, 0, 32, 32);
-    const art = artFor(p), cell = art?.cells[0][0];
-    if (cell) { pc.imageSmoothingEnabled = true; const s = cell.w * 0.9; pc.drawImage(art.canvas, cell.x + (cell.w - s) / 2, cell.y, s, s, 0, 0, 36, 36); }
-    else pc.drawImage(charSprite(lookOf(p), 0, 0), 0, 0, SPR_W, 16, 0, 2, 36, 32);
+    const pc = $("portrait").getContext("2d"); pc.imageSmoothingEnabled = false; pc.clearRect(0, 0, 36, 36);
+    pc.drawImage(charSprite(lookOf(p), 0, 0), 0, 0, SPR_W, 12, 2, 4, 32, 24);
+    renderBelt(p);
     renderLog();
     $("chat").classList.remove("hidden");
     setTimeout(() => $("chat-input").focus(), 0);
   }
+  // Each agent's tool belt: the user switches toolsets on and off; the brain only gets what is on.
+  function renderBelt(p) {
+    const box = $("toolbelt"); box.innerHTML = "";
+    const info = roster.toolsets || {};
+    for (const t of p.toolbelt || []) {
+      const on = (p.active_tools || []).includes(t);
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "tool" + (on ? " on" : ""); b.textContent = t.replace("mcp-", "");
+      b.title = `${info[t] || t}: ${on ? "on" : "off"}`; b.setAttribute("aria-pressed", String(on));
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const updated = await api("/api/tools", { agent: p.id, toolset: t, enabled: !on });
+          Object.assign(p, { active_tools: updated.active_tools });
+          await refresh();
+          toast(`${p.name}: ${t.replace("mcp-", "")} ${on ? "off" : "on"}`);
+        } catch (err) { toast(err.message, true); }
+        renderBelt(p);
+      };
+      box.appendChild(b);
+    }
+    $("belt-note").textContent = roster.brain === "hermes" ? "Hermes agent · tools apply on the next task" : roster.brain === "claude" ? "Tools take full effect with the Hermes brain" : "";
+  }
+  $("decisions-btn").addEventListener("click", async () => {
+    if (!chatWith) return;
+    const p = chatWith;
+    $("reader-title").textContent = `${p.name}: decisions`;
+    $("reader-body").textContent = "Loading…";
+    $("reader").classList.remove("hidden");
+    try {
+      const { decisions } = await api(`/api/decisions/${p.id}`);
+      $("reader-body").textContent = decisions.length ? decisions.map((d) =>
+        `${d.at}  ${d.ok ? "OK " : "ERR"}  ${d.model}${d.api_calls != null ? `  ${d.api_calls} calls` : ""}${d.cost_usd != null ? `  ~$${Number(d.cost_usd).toFixed(3)}` : ""}\n` +
+        `tools: ${(d.tools || []).join(", ") || "none"}\n> ${d.prompt}\n< ${d.reply}\n`).join("\n")
+        : "No decisions yet. Give this agent a task.";
+    } catch (err) { $("reader-body").textContent = err.message; }
+  });
+
   function renderLog() {
     const box = $("chat-log"); box.innerHTML = "";
     for (const m of logs[chatWith.id] || []) {
@@ -1751,9 +1275,9 @@
   // ------------------------------------------------------------------ boot
   async function refresh() {
     roster = await api("/api/state");
-    $("brain").textContent = roster.brain_label || (roster.brain === "claude" ? "Claude CLI" : "offline");
+    $("brain").textContent = roster.brain_label || ({ claude: "Claude CLI", hermes: "Hermes" }[roster.brain] || "offline");
     $("brain").className = "badge " + roster.brain;
-    $("brain").title = roster.brain === "claude" ? "Agents are thinking with Claude" : "No Claude available here — placeholder replies";
+    $("brain").title = { claude: "Agents think with your local claude CLI", hermes: "Each agent is its own Hermes Agent" }[roster.brain] || "No AI available here, placeholder replies";
     const pending = roster.review.filter((r) => r.status === "pending_review").length;
     $("review-count").textContent = pending; $("review-count").hidden = !pending;
     $("guardrails").innerHTML = "";
@@ -1770,22 +1294,15 @@
   for (const k of ["oak", "pine", "bush"]) world.trees[k] = drawTree(k);
   for (const k of ["lamp", "bench", "mailbox", "signpost", "barrel", "crate", "pot", "well", "tripod", "suitcase", "noticeboard", "cart", "fence"]) world.props[k] = drawProp(k);
   for (const id of Object.keys(LAYOUT)) world.houses[id] = drawHouse(id);
-  world.cloud = (() => {
-    const [c, g] = canvas(140, 70); g.fillStyle = "#101828";
-    for (const [x, y, r] of [[40, 38, 24], [70, 30, 30], [100, 40, 22], [60, 48, 22], [86, 50, 18]]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
-    return c;
-  })();
-  for (let i = 0; i < 4; i++) clouds.push({ x: rand() * W * T, y: rand() * H * T, s: 1 + rand() * 1.2 });
   const flowerTiles = [];
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (at(x, y) === 7) flowerTiles.push([x, y]);
   for (let i = 0; i < 9 && flowerTiles.length; i++) {
     const [fx, fy] = flowerTiles[(rand() * flowerTiles.length) | 0];
-    butterflies.push({ x: fx * T + 8, y: fy * T + 4, hx: fx * T + 8, hy: fy * T + 4, ph: rand() * 6, seed: rand() * 6, col: ["#ffd34d", "#ff9ec4", "#bfe7ff", "#ffffff"][i % 4] });
+    butterflies.push({ x: fx * T + 8, y: fy * T + 4, hx: fx * T + 8, hy: fy * T + 4, ph: rand() * 6, seed: rand() * 6, col: ["#e8e884", "#eca0a0", "#90cce8", "#ececec"][i % 4] });
   }
   for (let i = 0; i < 40; i++) fireflies.push({ x: rand() * W * T, y: rand() * H * T, ph: rand() * 6, seed: rand() * 6 });
   player.x = FOUNTAIN.x; player.y = (PLAZA.y + PLAZA.h - 4) * T;
   resize();
-  loadArt();
   refresh().then(() => {
     const c = chief(); if (c) { c.x = player.x + 16; c.y = player.y; }
     let seen = false;

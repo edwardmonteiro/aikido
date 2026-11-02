@@ -54,6 +54,8 @@ class Agent:
     palette: Dict[str, str] = field(default_factory=dict)
     connectors: List[str] = field(default_factory=list)
     advisor: Optional[str] = None
+    toolbelt: List[str] = field(default_factory=list)      # Hermes toolsets this agent may ever use
+    active_tools: List[str] = field(default_factory=list)  # the ones the user has switched on
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -200,7 +202,46 @@ def default_roster(chief_name: str = "Matt") -> List[Agent]:
             {"shirt": "#8e6c8a", "pants": "#2d2330", "hair": "#c9c9c9", "skin": "#f0c8a0"},
         ),
     ]
-    return [chief] + directors
+    agents = [chief] + directors
+    for a in agents:
+        a.toolbelt = list(TOOLBELTS[a.id])
+        a.active_tools = list(a.toolbelt)
+    return agents
+
+
+# Hermes toolsets an agent can be given. Hermes one-shot mode auto-approves
+# every tool call, so anything that can run code, drive a browser or computer,
+# schedule work, message people or spawn other agents is never on this list.
+HERMES_TOOLSETS = {
+    "memory": "Remembers facts and preferences across tasks",
+    "todo": "Plans and tracks multi-step work",
+    "skills": "Saves and reuses its own how-to skills",
+    "session_search": "Searches its own past conversations",
+    "web": "Searches and reads web pages",
+    "search": "Web search",
+    "mcp-gmail": "Gmail: search, read, list drafts, save drafts (never sends)",
+    "mcp-github": "GitHub: read repos, issues, pull requests, commits (read-only)",
+}
+TOOLBELTS = {
+    "chief_of_staff": ["memory", "todo", "skills", "session_search"],
+    "inbox": ["memory", "todo", "skills", "mcp-gmail"],
+    "content": ["memory", "todo", "skills", "web", "search"],
+    "finance": ["memory", "todo", "skills", "web"],
+    "research": ["memory", "todo", "skills", "web", "search", "session_search"],
+    "travel": ["memory", "todo", "skills", "web", "search"],
+    "engineering": ["memory", "todo", "skills", "mcp-github"],
+    "knowledge": ["memory", "todo", "skills", "session_search"],
+}
+WORKER_TOOLBELT = ["memory", "todo"]
+
+
+def safe_toolsets(toolsets: List[str]) -> List[str]:
+    """Only known, non-executing Hermes toolsets survive (dedup, order kept)."""
+    out: List[str] = []
+    for t in toolsets:
+        if t in HERMES_TOOLSETS and t not in out:
+            out.append(t)
+    return out
 
 
 def make_worker(director: Agent, index: int, name: str) -> Agent:
@@ -217,6 +258,8 @@ def make_worker(director: Agent, index: int, name: str) -> Agent:
         tools=[],
         reports_to=director.id,
         palette={"shirt": "#f5d300", "pants": "#3a3a3a", "hair": "#5a3825", "skin": "#e0ac69"},
+        toolbelt=list(WORKER_TOOLBELT),
+        active_tools=list(WORKER_TOOLBELT),
     )
 
 

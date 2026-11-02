@@ -68,9 +68,11 @@ class Town:
             agent.tools = list(self.config.get("connector_tools", {}).get(agent.id, agent.tools))
         for w in self.config.get("workers", []):
             self.agents.append(roster.make_worker(self.agent(w["reports_to"]), w["index"], w["name"]))
+        for agent in self.agents:
+            saved = self.config.get("toolbelts", {}).get(agent.id)
+            if saved is not None:
+                agent.active_tools = [t for t in roster.safe_toolsets(saved) if t in agent.toolbelt]
         roster.ensure_folders(self.root, self.agents)
-        for kind in ("ground", "houses", "trees", "props", "rooms", "characters"):
-            (self.root / "assets" / kind).mkdir(parents=True, exist_ok=True)
         self._save_json("village.json", self.config)
 
     # ---------------------------------------------------------------- files
@@ -113,6 +115,7 @@ class Town:
     def state(self) -> dict:
         return {
             "brain": self.brain.name,
+            "toolsets": roster.HERMES_TOOLSETS,
             "agents": [a.to_dict() for a in self.agents],
             "houses": [h.to_dict() for h in roster.HOUSES],
             "review": self._load_json("review.json", []),
@@ -244,6 +247,35 @@ class Town:
         free = [c for c in CANDIDATE_POOL if c[0] not in taken]
         self.remember("chief_of_staff", f"Sourced {min(count, len(free))} candidates for {director.name}.")
         return [{"name": n, "pitch": p, "director": director_id} for n, p in free[:count]]
+
+    # ---------------------------------------------------------------- tool belts
+    def set_tool(self, agent_id: str, toolset: str, enabled: bool) -> dict:
+        """Switch one toolset on or off for one agent. Only toolsets on its belt."""
+        agent = self.agent(agent_id)
+        if toolset not in agent.toolbelt or toolset not in roster.HERMES_TOOLSETS:
+            raise GuardrailError(f"{toolset!r} is not on {agent.name}'s tool belt.")
+        with self.lock:
+            on = [t for t in agent.active_tools if t != toolset]
+            if enabled:
+                on.append(toolset)
+            agent.active_tools = [t for t in agent.toolbelt if t in on]
+            self.config.setdefault("toolbelts", {})[agent.id] = agent.active_tools
+            self._save_json("village.json", self.config)
+        self.remember(agent.id, f"The user switched {toolset} {'on' if enabled else 'off'}.")
+        return agent.to_dict()
+
+    def decisions(self, agent_id: str, limit: int = 30) -> List[dict]:
+        """The agent's most recent Hermes runs, newest first."""
+        path = self.folder(self.agent(agent_id).id) / "decisions.jsonl"
+        if not path.exists():
+            return []
+        rows = []
+        for line in path.read_text().splitlines()[-limit:]:
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
+        return rows[::-1]
 
     def hire(self, director_id: str, name: str, approved_by_human: bool) -> dict:
         """Guardrail: a worker only spawns after the user interviews and approves."""

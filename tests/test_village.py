@@ -3,13 +3,14 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import pytest
 
 from aikido.village import roster
-from aikido.village.brain import ClaudeBrain, OfflineBrain
+from aikido.village.brain import ClaudeBrain, HermesBrain, OfflineBrain
 from aikido.village.pdf import render_pdf
-from aikido.village.server import asset_manifest, serve
+from aikido.village.server import serve
 from aikido.village.town import GuardrailError, Town
 
 
@@ -144,13 +145,74 @@ def test_http_api(tmp_path):
         httpd.server_close()
 
 
-def test_asset_manifest_prefers_the_users_art(tmp_path):
-    mine, builtin = tmp_path / "mine", tmp_path / "builtin"
-    for root, name in ((mine, "bank.png"), (builtin, "bank.png"), (builtin, "oak.webp")):
-        folder = root / ("houses" if name == "bank.png" else "trees")
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / name).write_bytes(b"x")
-    (mine / "houses" / "notes.txt").write_text("ignored")
-    m = asset_manifest(mine, builtin)
-    assert m["houses"] == {"bank": "houses/bank.png"} and m["trees"] == {"oak": "trees/oak.webp"}
-    assert set(m) == {"ground", "houses", "trees", "props", "rooms", "characters"}
+
+FAKE_HERMES = """#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+usage = args[args.index("--usage-file") + 1]
+json.dump({"api_calls": 2, "estimated_cost_usd": 0.01}, open(usage, "w"))
+home = os.environ["HERMES_HOME"]
+soul = open(os.path.join(home, "SOUL.md")).read()
+print("# Plan\\n" + ("persona-ok " if "Money Director" in soul else "") + "tools=" + args[args.index("-t") + 1])
+"""
+
+
+def _fake_hermes(tmp_path):
+    exe = tmp_path / "hermes"
+    exe.write_text(FAKE_HERMES)
+    exe.chmod(0o755)
+    return str(exe)
+
+
+def test_hermes_tool_belt_is_the_boundary():
+    by_id = {a.id: a for a in roster.default_roster()}
+    penny = by_id["finance"]
+    penny.active_tools = ["memory", "web", "terminal", "code_execution", "mcp-github"]
+    assert HermesBrain().toolsets(penny) == ["memory", "web"]  # off-belt and unsafe toolsets never pass
+    iris = by_id["inbox"]
+    assert "mcp-gmail" not in HermesBrain().toolsets(iris)  # no Gmail URL configured yet
+    assert "mcp-gmail" in HermesBrain(mcp={"gmail": {"url": "https://example.test/mcp"}}).toolsets(iris)
+    cmd = HermesBrain().command(by_id["engineering"], "hi", Path("/tmp/x"))
+    assert cmd[:3] == ["hermes", "-z", "hi"] and "--provider" in cmd and "anthropic" in cmd
+    assert "mcp-github" in cmd[cmd.index("-t") + 1]
+
+
+def test_hermes_brain_runs_profile_and_logs_decisions(tmp_path):
+    town = Town(tmp_path / "v", HermesBrain(binary=_fake_hermes(tmp_path)))
+    job = _wait(town, town.submit("task", town.task, "Build a cash flow forecast for Q1"))
+    assert job["status"] == "done", job
+    assert job["result"]["routed_to"] == "finance"
+    body = (tmp_path / "v" / job["result"]["deliverable"]["md"]).read_text()
+    assert "persona-ok" in body and "tools=memory,todo,skills,web" in body
+    home = tmp_path / "v" / "agents" / "finance" / "hermes"
+    config = __import__("yaml").safe_load((home / "config.yaml").read_text())
+    assert config["toolsets"] == ["memory", "todo", "skills", "web"] and config["mcp_servers"] == {}
+    log = town.decisions("finance")
+    assert log[0]["ok"] and log[0]["api_calls"] == 2 and log[0]["cost_usd"] == 0.01
+
+
+def test_tool_toggles_persist_and_stay_on_the_belt(tmp_path):
+    town = Town(tmp_path, OfflineBrain())
+    assert "web" not in town.set_tool("finance", "web", False)["active_tools"]
+    with pytest.raises(GuardrailError):
+        town.set_tool("finance", "terminal", True)
+    with pytest.raises(GuardrailError):
+        town.set_tool("finance", "mcp-gmail", True)  # Gmail is Iris's tool, not Penny's
+    again = Town(tmp_path, OfflineBrain())
+    assert "web" not in again.agent("finance").active_tools
+    assert town.set_tool("finance", "web", True)["active_tools"] == ["memory", "todo", "skills", "web"]
+
+
+def test_hermes_failure_with_exit_zero_is_an_error(tmp_path):
+    exe = tmp_path / "hermes"
+    exe.write_text("""#!/usr/bin/env python3
+import json, sys
+args = sys.argv[1:]
+json.dump({"api_calls": 1, "failed": True}, open(args[args.index("--usage-file") + 1], "w"))
+print("HTTP 401: OAuth access token is invalid.")
+""")
+    exe.chmod(0o755)
+    town = Town(tmp_path / "v", HermesBrain(binary=str(exe)))
+    job = _wait(town, town.submit("chat", town.chat, "finance", "hello"))
+    assert job["status"] == "error" and "401" in job["error"]
+    assert town.decisions("finance")[0]["ok"] is False

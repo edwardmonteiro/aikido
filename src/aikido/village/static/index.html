@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Agent Village</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=Silkscreen&family=Nunito:wght@500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
   <link rel="stylesheet" href="village.css">
 </head>
 <body>
   <canvas id="world"></canvas>
 
   <header id="toolbar">
-    <div class="brand"><span class="logo">合</span><span class="logo-hd" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" fill="currentColor"/></svg></span> Agent Village <span id="brain" class="badge">…</span></div>
+    <div class="brand"><span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span> Agent Village <span id="brain" class="badge">…</span></div>
     <form id="todo-form" autocomplete="off">
       <input id="todo" placeholder="New to-do for your Chief of Staff" maxlength="500" aria-label="New to-do">
       <button type="submit" class="primary">Send</button>
@@ -60,6 +60,12 @@
       <div><strong id="chat-name"></strong><div id="chat-title" class="muted"></div></div>
       <button class="close" data-close="chat" aria-label="Close">×</button>
     </div>
+    <div class="belt">
+      <span class="belt-label">Tool belt</span>
+      <div id="toolbelt"></div>
+      <button type="button" id="decisions-btn" title="This agent's recent decisions">Decisions</button>
+    </div>
+    <div id="belt-note" class="muted"></div>
     <div id="chat-log"></div>
     <form id="chat-form" autocomplete="off">
       <input id="chat-input" placeholder="Say something…" maxlength="2000" aria-label="Message">
@@ -93,6 +99,8 @@
       <li><kbd>G</kbd> show the walkable map (green = walkable)</li>
       <li><kbd>Esc</kbd> close panels</li>
     </ul>
+    <h4>Tool belts</h4>
+    <p class="muted">Talk to an agent to see its tool belt. Tap a tool to switch it on or off. With the Hermes brain, each agent is its own Hermes Agent with its own memory, skills and tools.</p>
     <h4>Connectors</h4>
     <ul id="connectors"><li>Iris (Inbox) can use Gmail. Ezra (Code) can use GitHub.</li></ul>
     <h4>Guardrails</h4>

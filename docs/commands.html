@@ -407,6 +407,7 @@
     <pre><code><span class="tok-p">$</span> aikido village
 <span class="tok-p">$</span> aikido village --port 9000 --chief Ana
 <span class="tok-p">$</span> aikido village --offline --no-open-browser
+<span class="tok-p">$</span> aikido village --brain hermes
 </code></pre>
     <div class="table-wrap"><table>
       <thead><tr><th>Argument / Option</th><th>Default</th><th>Description</th></tr></thead>
@@ -425,6 +426,11 @@
           <td><code>--offline / --no-offline</code></td>
           <td><code>false</code></td>
           <td>Skip the <code>claude</code> CLI and use placeholder replies</td>
+        </tr>
+        <tr>
+          <td><code>--brain</code></td>
+          <td><code>auto</code></td>
+          <td><code>auto</code> or <code>claude</code> (local claude CLI), <code>hermes</code> (one Hermes Agent profile per agent) or <code>offline</code></td>
         </tr>
         <tr>
           <td><code>--chief</code></td>

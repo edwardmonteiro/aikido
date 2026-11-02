@@ -143,6 +143,21 @@ seven **directors**:
   spawn after you interview and approve them (`approved_by_human`). The server
   binds to `127.0.0.1` and refuses cross-origin requests.
 
+**Hermes brain.** `aikido village --brain hermes` gives every agent its own
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) (Nous Research)
+profile in `village/agents/<id>/hermes/`: its own `SOUL.md` persona, memory,
+skills and tool belt. Hermes runs on Claude through your subscription token:
+`pip install "hermes-agent[anthropic]"`, `claude setup-token`, then export
+`CLAUDE_CODE_OAUTH_TOKEN`. Hermes one-shot mode auto-approves tool calls, so
+the tool belt is the boundary. Agents only ever get memory, todo, skills,
+session search, web search, and read-or-draft Gmail/GitHub. Terminal, code
+execution, browser and computer control, cron jobs and delegation are never
+available. Talk to an agent to switch tools on its belt. **Decisions** shows
+each run's model, tools, API calls and estimated cost
+(`village/agents/<id>/decisions.jsonl`). Point the Gmail MCP server at a URL
+in `village/village.json` under `hermes.mcp.gmail.url`. GitHub uses
+`GITHUB_TOKEN`.
+
 **Connectors.** Iris (Inbox) can search and read Gmail and save drafts. Ezra
 (Code) can read GitHub repositories, issues, pull requests and commits. By default
 they use the tool names the `claude` CLI gives a claude.ai Gmail connector
@@ -156,22 +171,16 @@ at other names in `village/village.json`:
 Tools whose names suggest sending, posting, paying, trading, sharing or deleting
 are dropped before they reach the CLI, whatever the config says.
 
-**Painted art.** To get the look of a painted 3D game, drop images into
-`village/assets/` (characters, buildings, rooms, trees, props, ground textures).
-Each image replaces the matching pixel art, and anything still missing stays
-pixel art. The UI switches to a cleaner theme once any painted art is loaded.
-[`docs/village-art-prompts.md`](docs/village-art-prompts.md) has the style guide,
-exact prompts, file names and sizes.
-
-Without painted art, everything is drawn in code at true pixel size and scaled by whole device pixels,
+Everything is drawn in code in Atari 2600 style at true pixel size and scaled by whole device pixels,
 so the art stays crisp on any screen. There are no image assets and no
 image-generation credits to spend. The village has touch controls on phones and
-a day/night cycle that follows your clock (try `?hour=21`), plus a pond with ducks,
-drifting cloud shadows, swaying trees, butterflies, fireflies and a minimap.
+a day/night cycle that follows your clock (try `?hour=21`), plus a pond with ducks, butterflies,
+fireflies, CRT scanlines and a minimap.
 
-![The village by day](docs/img/village-town.png)
-![Tess in the Travel Lodge](docs/img/village-interior.png)
-![The pond at night](docs/img/village-night.png)
+![The village](docs/img/village-town.png)
+![Penny's tool belt](docs/img/village-toolbelt.png)
+![Town Hall meeting](docs/img/village-interior.png)
+![The square at night](docs/img/village-night.png)
 
 ## Development
 
