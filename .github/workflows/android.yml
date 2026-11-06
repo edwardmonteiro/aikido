@@ -1,0 +1,77 @@
+# Build the aikido Android app (android/) and publish it for download.
+#   - every run uploads the APK as a workflow artifact
+#   - pushes to main also refresh the rolling "android-latest" GitHub Release
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", "docs/**", "pyproject.toml", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["android/**", "docs/**", "pyproject.toml", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Optional: a stable signing key lets users update in place. Without the
+      # ANDROID_KEYSTORE_BASE64 secret each build is signed with a throwaway key.
+      - name: Restore signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/aikido.keystore"
+            echo "AIKIDO_KEYSTORE=$RUNNER_TEMP/aikido.keystore" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build
+        env:
+          AIKIDO_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          AIKIDO_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          AIKIDO_VERSION_CODE: ${{ github.run_number }}
+        run: android/build.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aikido-apk
+          path: android/build/aikido.apk
+
+  release:
+    name: Publish android-latest release
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: aikido-apk
+
+      - name: Replace release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete android-latest --cleanup-tag --yes || true
+          gh release create android-latest aikido.apk \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "aikido Android (latest)" \
+            --notes "Built from ${GITHUB_SHA::7}. Download aikido.apk and open it on your phone (allow installs from unknown sources)."

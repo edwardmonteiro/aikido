@@ -113,6 +113,24 @@ transcript (or a manual paste) into a scope-disciplined daily and opens it as a
 pull request — using the `daily_from_transcript` agent + Claude. See
 [`azure/README.md`](azure/README.md) for deploy + Power Automate wiring.
 
+### Android app (APK)
+
+`android/` packages the docs site plus a phone version of `aikido daily` into an
+offline Android app. The capture form renders the exact same Markdown as the CLI
+(`tests/test_android_daily.py` keeps them in sync); save the `.md` into your repo's
+`01_weekly_cadence/{week}/` or share it to any app.
+
+- **Download:** grab `aikido.apk` from the
+  [`android-latest` release](https://github.com/edwardmonteiro/aikido/releases/tag/android-latest)
+  (rebuilt on every push to `main`) and open it on your phone, allowing installs
+  from unknown sources.
+- **Build locally:** `android/build.sh` → `android/build/aikido.apk`. It needs a JDK
+  and an Android SDK (`$ANDROID_HOME`, or Ubuntu's
+  `apt install android-sdk-platform-23 android-sdk-build-tools`); no Gradle.
+- **Stable signing:** set the `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`
+  and `ANDROID_KEY_ALIAS` repo secrets so updates install over the previous
+  version; without them each build uses a throwaway key (uninstall before updating).
+
 ### Regenerating the command reference
 
 `docs/commands.html` is a build artifact — it's rendered through aikido's own
