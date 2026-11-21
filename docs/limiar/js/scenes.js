@@ -3,41 +3,42 @@
   'use strict';
   const LIM = global.LIM;
   const W = 480, H = 270;
-  const FONT = '"Press Start 2P", monospace';
+  const FONT = 'Inter, system-ui, sans-serif';
+  const FONT_D = 'Cinzel, Georgia, serif';
   const AMBER = '#e0aa5c';
   const SPEAKERS = {
     aren: ['AREN', 'pt-aren'], courier: ['MENSAGEIRO', 'pt-courier'], narrador: ['NARRADOR', 'pt-narrador'],
     vigia: ['VIGIA DE BRONZE', 'pt-vigia'], eco: ['ECO DE AREN', 'pt-eco'], lira: ['LIRA', 'pt-lira']
   };
 
-  // A fonte Press Start 2P não tem maiúsculas acentuadas: normaliza só essas.
-  const CAPS = { Á: 'A', À: 'A', Â: 'A', Ã: 'A', É: 'E', Ê: 'E', Í: 'I', Ó: 'O', Ô: 'O', Õ: 'O', Ú: 'U', Ç: 'C' };
-  const fixCaps = (s) => String(s).replace(/[ÁÀÂÃÉÊÍÓÔÕÚÇ]/g, (c) => CAPS[c]);
-  LIM.fixCaps = fixCaps;
-  const origSetText = Phaser.GameObjects.Text.prototype.setText;
-  Phaser.GameObjects.Text.prototype.setText = function (v) {
-    return origSetText.call(this, Array.isArray(v) ? v.map(fixCaps) : (v == null ? v : fixCaps(v)));
-  };
+  const ZOOM = 1280 / 480;
+  LIM.ZOOM = ZOOM;
+  // câmera em 1280×720 mostrando o mundo lógico de 480×270 (vetores e texto nítidos)
+  function cam(scene) { scene.cameras.main.setZoom(ZOOM).setOrigin(0, 0); return scene.cameras.main; }
+  LIM.cam = cam;
 
   function txt(scene, x, y, s, size, color, o) {
     o = o || {};
-    const t = scene.add.text(x, y, fixCaps(s), {
-      fontFamily: FONT, fontSize: (size || 8) + 'px', color: color || '#f4e6c8',
-      stroke: o.stroke || '#08060c', strokeThickness: o.thick != null ? o.thick : Math.max(2, Math.round((size || 8) / 3)),
-      align: o.align || 'center', wordWrap: o.wrap ? { width: o.wrap } : undefined, lineSpacing: o.ls || 3
+    const disp = o.display || (size || 8) >= 10;
+    const px = disp ? (size || 8) * 1.15 : (size || 8) * 1.3;
+    const t = scene.add.text(x, y, s, {
+      fontFamily: disp ? FONT_D : FONT, fontStyle: o.bold || disp ? '700' : '400', fontSize: px + 'px', color: color || '#f4e6c8',
+      stroke: o.stroke || '#08060c', strokeThickness: o.thick != null ? Math.min(o.thick, 2) * 0.6 : (disp ? 1.2 : 0.8), resolution: 3,
+      align: o.align || 'center', wordWrap: o.wrap ? { width: o.wrap } : undefined, lineSpacing: (o.ls || 3) * 0.6
     });
+    if (disp) t.setShadow(0, 0, 'rgba(0,0,0,0.9)', 4, true, true);
     return t.setOrigin(o.ox != null ? o.ox : 0.5, o.oy != null ? o.oy : 0.5);
   }
 
   function button(scene, x, y, label, cb, opts) {
     opts = opts || {};
-    const w = opts.w || Math.max(96, label.length * 7 + 26);
-    const col = opts.color || 0x2a1c2c;
-    const bg = scene.add.rectangle(x, y, w, 22, col, 0.92).setStrokeStyle(1, opts.disabled ? 0x5a5060 : 0xe0aa5c);
-    const t = txt(scene, x, y + 1, label, 6, opts.disabled ? '#7a7080' : '#f4e6c8', { thick: 2 });
+    const w = opts.w || Math.max(90, label.length * 5 + 30);
+    const col = opts.color || 0x140e18;
+    const bg = scene.add.rectangle(x, y, w, 20, col, 0.78).setStrokeStyle(0.6, opts.disabled ? 0x5a5060 : 0xe0aa5c);
+    const t = txt(scene, x, y + 0.5, label, 6, opts.disabled ? '#7a7080' : '#f4e6c8', { bold: true });
     if (!opts.disabled) {
       bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerover', () => bg.setFillStyle(0x4a2c2c));
+      bg.on('pointerover', () => bg.setFillStyle(0x3a2420));
       bg.on('pointerout', () => bg.setFillStyle(col));
       bg.on('pointerup', () => { LIM.SFX.select(); cb(); });
     }
@@ -46,15 +47,33 @@
   }
 
   function parallax(scene, theme) {
-    const sky = scene.add.image(0, 0, 'bg-' + theme + '-sky').setOrigin(0).setScale(2).setScrollFactor(0).setDepth(0);
-    const far = scene.add.tileSprite(0, -10, 240, 135, 'bg-' + theme + '-far').setOrigin(0).setScale(2).setScrollFactor(0).setDepth(1);
-    const mid = scene.add.tileSprite(0, -12, 240, 135, 'bg-' + theme + '-mid').setOrigin(0).setScale(2).setScrollFactor(0).setDepth(2);
-    const ground = scene.add.tileSprite(0, 180, 240, 45, 'bg-' + theme + '-ground').setOrigin(0).setScale(2).setScrollFactor(0).setDepth(2.5);
+    LIM.ensureTheme(scene, theme);
+    const H2 = 0.5;
+    const sky = scene.add.image(0, 0, 'bg-sky').setOrigin(0).setScale(H2).setScrollFactor(0).setDepth(0);
+    const far = scene.add.tileSprite(0, 0, 960, 540, 'bg-far').setOrigin(0).setScale(H2).setScrollFactor(0).setDepth(1);
+    const fogB = scene.add.tileSprite(0, 92, 960, 200, 'bg-fog').setOrigin(0).setScale(H2).setScrollFactor(0).setDepth(1.5).setAlpha(0.8);
+    const mid = scene.add.tileSprite(0, 0, 960, 540, 'bg-mid').setOrigin(0).setScale(H2).setScrollFactor(0).setDepth(2);
+    const ground = scene.add.tileSprite(0, 180, 960, 180, 'bg-ground').setOrigin(0).setScale(H2).setScrollFactor(0).setDepth(2.5);
+    const fogF = scene.add.tileSprite(0, 150, 960, 200, 'bg-fog').setOrigin(0).setScale(H2).setScrollFactor(0).setDepth(2.6).setAlpha(0.45);
+    scene.add.image(0, 0, 'vignette').setOrigin(0).setScale(H2).setScrollFactor(0).setDepth(690);
+    let t = 0;
     return {
       sky, far, mid, ground,
-      update(sx) { far.tilePositionX = sx * 0.1; mid.tilePositionX = sx * 0.25; ground.tilePositionX = sx * 0.5; }
+      update(sx, dt) {
+        t += dt || 0.016;
+        far.tilePositionX = sx * 0.12 * 2; mid.tilePositionX = sx * 0.35 * 2; ground.tilePositionX = sx * 2;
+        fogB.tilePositionX = sx * 0.25 * 2 + t * 6; fogF.tilePositionX = sx * 0.8 * 2 + t * 14;
+      }
     };
   }
+
+  function embers(scene, dt) {
+    if (Math.random() < dt * 9) {
+      const e = scene.add.image(Math.random() * W, H + 4, 'glow').setScale(0.03 + Math.random() * 0.03).setTint(0xffa050).setBlendMode(Phaser.BlendModes.ADD).setDepth(680).setScrollFactor(0);
+      scene.tweens.add({ targets: e, y: Math.random() * H * 0.6, x: e.x + (Math.random() - 0.5) * 80, alpha: 0, duration: 3000 + Math.random() * 3000, onComplete: () => e.destroy() });
+    }
+  }
+  LIM.embers = embers;
 
   function goFullscreen(scene) {
     if (scene.scale.isFullscreen) { scene.scale.stopFullscreen(); return; }
@@ -86,14 +105,15 @@
     create() {
       this._leaving = false; this.now = 0; this.wind = -20;
       LIM.Input.showTouch(false); LIM.Input.clear();
-      this.cameras.main.fadeIn(500);
+      cam(this).fadeIn(500);
       this.bg = parallax(this, 'gate');
       this.add.rectangle(0, 0, W, H, 0x000000, 0.3).setOrigin(0).setDepth(3);
       this.hero = new LIM.Actor(this, 'aren', 110, 236, 1);
-      this.hero.sprite.setDepth(300);
       this.add.text(0, 0, '').setVisible(false);
-      const logo = txt(this, 300, 58, 'LIMIAR', 34, AMBER, { stroke: '#2a0c10', thick: 7 }).setDepth(500);
-      txt(this, 300, 90, 'A ÚLTIMA SOMBRA', 9, '#f4e6c8').setDepth(500);
+      const logo = txt(this, 300, 58, 'LIMIAR', 40, '#f2c27a', { display: true }).setDepth(500);
+      logo.setLetterSpacing && logo.setLetterSpacing(6);
+      logo.setShadow(0, 0, 'rgba(255,150,70,0.85)', 14, true, true);
+      const sub = txt(this, 300, 88, 'A ÚLTIMA SOMBRA', 11, '#f4e6c8', { display: true }).setDepth(500); sub.setLetterSpacing && sub.setLetterSpacing(4);
       this.tweens.add({ targets: logo, alpha: 0.85, duration: 1400, yoyo: true, repeat: -1 });
       const has = LIM.Save.exists() && (LIM.Save.data.unlocked > 1 || Object.keys(LIM.Save.data.done).length);
       let y = 126;
@@ -101,13 +121,14 @@
       button(this, 300, y, 'NOVO JOGO', () => { LIM.SFX.unlock(); LIM.Save.reset(); fadeTo(this, 'Intro'); }, { w: 150 }).depth(500); y += 28;
       const snd = button(this, 262, y, LIM.SFX.isMuted() ? 'SOM: NÃO' : 'SOM: SIM', () => { snd.t.setText(LIM.SFX.toggleMute() ? 'SOM: NÃO' : 'SOM: SIM'); }, { w: 74 }).depth(500);
       button(this, 338, y, 'TELA CHEIA', () => goFullscreen(this), { w: 74 }).depth(500);
-      txt(this, W / 2, 262, 'PHASER 3 (MIT) · PRESS START 2P (OFL) · ARTE E SOM GERADOS EM CÓDIGO', 5, '#8a7a8a', { thick: 2 }).setDepth(500);
+      txt(this, W / 2, 262, 'PHASER 3 (MIT) · CINZEL E INTER (OFL) · ARTE E SOM GERADOS EM CÓDIGO', 5, '#8a7a8a', { thick: 2 }).setDepth(500);
       this.input.once('pointerdown', () => LIM.SFX.unlock());
     }
     update(_, d) {
       const dt = Math.min(d / 1000, 1 / 30); this.now += dt;
-      this.hero.t += dt; this.hero.play('idle'); this.hero.finish(dt); this.hero.render();
-      this.bg.update(this.now * 8);
+      this.hero.t += dt; this.hero.play('idle'); this.hero.finish(dt); this.hero.render(dt);
+      this.bg.update(this.now * 8, dt);
+      embers(this, dt);
       if (LIM.Input.consume('start')) fadeTo(this, LIM.Save.data.unlocked > 1 ? 'Map' : 'Intro');
     }
   }
@@ -117,11 +138,11 @@
     constructor(scene) {
       this.scene = scene; this.active = false;
       const D = 950;
-      this.box = scene.add.rectangle(0, 200, W, 70, 0x08060c, 0.9).setOrigin(0).setScrollFactor(0).setDepth(D).setStrokeStyle(1, 0xe0aa5c);
-      this.pt = scene.add.image(26, 228, 'pt-aren').setScale(1.4).setScrollFactor(0).setDepth(D + 1);
-      this.name = txt(scene, 52, 208, '', 6, AMBER, { ox: 0, thick: 2 }).setScrollFactor(0).setDepth(D + 1);
-      this.body = txt(scene, 52, 220, '', 7, '#f4e6c8', { ox: 0, oy: 0, align: 'left', wrap: 410, thick: 2, ls: 5 }).setScrollFactor(0).setDepth(D + 1);
-      this.hint = txt(scene, W - 10, 262, '>>', 6, AMBER, { ox: 1, thick: 2 }).setScrollFactor(0).setDepth(D + 1);
+      this.box = scene.add.rectangle(8, 198, W - 16, 66, 0x08060c, 0.86).setOrigin(0).setScrollFactor(0).setDepth(D).setStrokeStyle(0.6, 0xe0aa5c);
+      this.pt = scene.add.image(36, 231, 'pt-aren').setScale(0.5).setScrollFactor(0).setDepth(D + 1);
+      this.name = txt(scene, 66, 208, '', 7, AMBER, { ox: 0, display: true }).setScrollFactor(0).setDepth(D + 1);
+      this.body = txt(scene, 66, 217, '', 7, '#f4e6c8', { ox: 0, oy: 0, align: 'left', wrap: 395, ls: 4 }).setScrollFactor(0).setDepth(D + 1);
+      this.hint = txt(scene, W - 16, 256, '▸', 8, AMBER, { ox: 1 }).setScrollFactor(0).setDepth(D + 1);
       this.set(false);
       scene.input.on('pointerup', () => { if (this.active) this.advance(); });
     }
@@ -167,18 +188,22 @@
     create() {
       this._leaving = false;
       LIM.Input.showTouch(false); LIM.Input.clear();
-      this.cameras.main.fadeIn(600);
+      cam(this).fadeIn(600);
       this.layer = this.add.container(0, 0);
+      this.rigs = [];
+      LIM.ensureTheme(this, 'street');
       this.dlg = new Dialogue(this);
       button(this, W - 40, 14, 'PULAR', () => this.finish(), { w: 60 }).depth(990);
       this.screen(0);
     }
     screen(i) {
       this.layer.removeAll(true);
+      this.rigs.forEach((r) => r.rig.destroy()); this.rigs = [];
+      const rig = (type, pose, x, y, f) => { const r = new LIM.Rig(this, type); r.setPose(pose); r.cur = Object.assign({}, LIM.POSES_V[pose]); this.rigs.push({ rig: r, x, y, f }); };
       const add = (o) => { this.layer.add(o); return o; };
       if (i === 0) {
-        add(this.add.image(0, 0, 'bg-street-sky').setOrigin(0).setScale(2));
-        add(this.add.image(0, -10, 'bg-street-far').setOrigin(0).setScale(2));
+        add(this.add.image(0, 0, 'bg-sky').setOrigin(0).setScale(0.5));
+        add(this.add.image(0, 0, 'bg-far').setOrigin(0).setScale(0.5));
         add(txt(this, W / 2, 30, 'ARCOS · O ÚLTIMO AMANHECER', 8, AMBER));
         const dark = add(this.add.rectangle(0, 0, W, H, 0x000000, 0).setOrigin(0));
         this.tweens.add({ targets: dark, fillAlpha: 0.55, duration: 4000 });
@@ -187,24 +212,24 @@
         add(this.add.rectangle(0, 0, W, H, 0x0a0810).setOrigin(0));
         add(this.add.rectangle(300, 70, 70, 90, 0x3a2440));
         add(this.add.rectangle(300, 70, 62, 82, 0xd6a65a, 0.25));
-        add(this.add.sprite(200, 180, 'c-aren', 'sit').setScale(2).setOrigin(0.5, 1));
-        add(this.add.rectangle(206, 152, 10, 4, 0xd42a2a));
+        add(this.add.image(300, 70, 'glow').setScale(1.4).setTint(0xd6a65a).setAlpha(0.35).setBlendMode(Phaser.BlendModes.ADD));
+        rig('aren', 'sit', 200, 190, 1);
         add(this.add.rectangle(250, 176, 12, 8, 0xf4e6c8));
         add(txt(this, W / 2, 30, 'UM QUARTO VAZIO', 8, AMBER));
         this.dlg.open([['aren', '"Encontre Lira antes que o céu abra..." Fui eu quem escreveu isto?']], () => this.screen(2));
       } else {
-        add(this.add.image(0, 0, 'bg-street-sky').setOrigin(0).setScale(2));
-        add(this.add.image(0, -12, 'bg-street-mid').setOrigin(0).setScale(2));
-        add(this.add.image(0, 180, 'bg-street-ground').setOrigin(0).setScale(2));
-        add(this.add.sprite(240, 230, 'c-courier', 'sit').setScale(2).setOrigin(0.5, 1));
-        add(this.add.sprite(180, 232, 'c-errante', 'tele').setScale(2).setOrigin(0.5, 1));
-        add(this.add.sprite(300, 232, 'c-errante', 'tele').setScale(2).setOrigin(0.5, 1).setFlipX(true));
+        add(this.add.image(0, 0, 'bg-sky').setOrigin(0).setScale(0.5));
+        add(this.add.image(0, 0, 'bg-mid').setOrigin(0).setScale(0.5));
+        add(this.add.image(0, 180, 'bg-ground').setOrigin(0).setScale(0.5));
+        rig('courier', 'sit', 240, 230, 1);
+        rig('errante', 'tele', 180, 234, 1);
+        rig('errante', 'tele', 300, 234, -1);
         add(txt(this, W / 2, 30, 'A PRIMEIRA RUA', 8, AMBER));
         this.dlg.open([['narrador', 'Um mensageiro é cercado por sombras. A luta começa.']], () => this.finish());
       }
     }
     finish() { if (this._leaving) return; this.dlg.set(false); fadeTo(this, 'Stage', { id: 1 }); }
-    update(_, d) { this.dlg.update(Math.min(d / 1000, 1 / 30)); }
+    update(_, d) { const dt = Math.min(d / 1000, 1 / 30); this.dlg.update(dt); this.wind = -20; this.rigs.forEach((r) => { r.rig.step(dt, 1); r.rig.render(r.x, r.y, r.f, 0, dt, 200 + r.y); }); }
   }
 
   // ---- Mapa do Ato -----------------------------------------------------------------------------
@@ -213,12 +238,13 @@
     create() {
       this._leaving = false;
       LIM.Input.showTouch(false); LIM.Input.clear();
-      this.cameras.main.fadeIn(350);
+      cam(this).fadeIn(350);
       const S = LIM.Save.data, act = LIM.DATA.acts[0];
-      this.add.image(0, 0, 'bg-street-sky').setOrigin(0).setScale(2);
-      this.add.image(0, -10, 'bg-street-far').setOrigin(0).setScale(2).setAlpha(0.6);
+      LIM.ensureTheme(this, 'street');
+      this.add.image(0, 0, 'bg-sky').setOrigin(0).setScale(0.5);
+      this.add.image(0, 0, 'bg-far').setOrigin(0).setScale(0.5).setAlpha(0.7);
       this.add.rectangle(0, 0, W, H, 0x08060c, 0.55).setOrigin(0);
-      txt(this, 14, 14, 'ATO I — ' + act.name.toUpperCase(), 8, AMBER, { ox: 0 });
+      txt(this, 14, 16, 'ATO I — ' + act.name.toUpperCase(), 12, '#f2c27a', { ox: 0, display: true });
       txt(this, W - 12, 14, `AÇO ${S.steel}   ECO ${S.eco}   MEMÓRIAS ${S.memories.length}/3`, 5, '#f4e6c8', { ox: 1, thick: 2 });
       txt(this, 14, 30, act.environment, 5, '#a89aa8', { ox: 0, thick: 2 });
 
@@ -284,31 +310,33 @@
       this.tokens = 2; this.lock = null;
       this.enemies = []; this.crates = [];
       LIM.Input.clear(); LIM.Input.showTouch(true);
-      this.cameras.main.fadeIn(400);
-      this.cameras.main.setBounds(0, 0, S.width, H);
+      cam(this).fadeIn(400);
 
       this.bg = parallax(this, S.theme);
       this.lamps = [];
       if (S.lamps) {
         for (let x = 120; x < S.width; x += 240) {
-          const l = this.add.image(x, 198, 'lamp-on').setOrigin(0.5, 1).setScale(2).setDepth(5);
-          const gl = this.add.image(x, 30, 'glow').setScale(2.2).setDepth(5).setBlendMode(Phaser.BlendModes.ADD);
-          this.lamps.push({ l, gl });
+          const l = this.add.image(x, 198, 'lamp-on').setOrigin(0.5, 1).setScale(0.5).setDepth(5);
+          const lx = x + 11, ly = 198 - 96;
+          const gl = this.add.image(lx, ly, 'glow').setScale(0.9).setTint(0xffb860).setAlpha(0.75).setDepth(5).setBlendMode(Phaser.BlendModes.ADD);
+          const cone = this.add.image(lx, ly, 'cone').setOrigin(0.5, 0).setScale(0.5, 0.33).setAlpha(0.55).setDepth(4).setBlendMode(Phaser.BlendModes.ADD);
+          const pool = this.add.image(lx, 222, 'glow').setScale(0.9, 0.18).setTint(0xffb060).setAlpha(0.35).setDepth(3).setBlendMode(Phaser.BlendModes.ADD);
+          this.lamps.push({ l, gl, cone, pool });
         }
       }
       this.darkness = this.add.rectangle(0, 0, W, H, 0x050310, 0).setOrigin(0).setScrollFactor(0).setDepth(700);
       (S.crates || []).forEach(([x, y]) => {
-        const s = this.add.image(x, y, 'crate').setOrigin(0.5, 1).setScale(2).setDepth(10 + y);
+        const s = this.add.image(x, y, 'crate').setOrigin(0.5, 1).setScale(0.7).setDepth(10 + y);
         this.crates.push({ s, x, y, hp: 12 });
       });
       if (S.memory && !save.memories.includes(S.memory.id)) {
         const m = S.memory;
-        this.memory = this.add.image(m.x, m.y - 20, 'memory').setScale(2).setDepth(10 + m.y);
-        const gl = this.add.image(m.x, m.y - 20, 'glow').setScale(1.2).setDepth(9 + m.y).setBlendMode(Phaser.BlendModes.ADD);
+        this.memory = this.add.image(m.x, m.y - 20, 'memory').setScale(0.55).setDepth(10 + m.y);
+        const gl = this.add.image(m.x, m.y - 20, 'glow').setScale(0.6).setTint(0xffc870).setAlpha(0.8).setDepth(9 + m.y).setBlendMode(Phaser.BlendModes.ADD);
         this.tweens.add({ targets: [this.memory, gl], y: m.y - 26, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
         this.memoryGlow = gl;
       }
-      if (S.npc) { this.npc = this.add.sprite(S.npc.x, S.npc.y, 'c-courier', 'sit').setScale(2).setOrigin(0.5, LIM.FRAME_H.courier.FOOT / LIM.FRAME_H.courier.FH).setDepth(10 + S.npc.y); }
+      if (S.npc) { this.npc = new LIM.Rig(this, 'courier'); this.npc.setPose('sit'); this.npc.cur = Object.assign({}, LIM.POSES_V.sit); this.npcPos = { x: S.npc.x, y: S.npc.y, f: 1 }; }
       if (S.exit) {
         this.exitMark = this.add.container(S.exit.x, 0).setDepth(6);
         this.exitMark.add(this.add.rectangle(0, 120, 4, 120, 0xe0aa5c, 0.4));
@@ -322,7 +350,7 @@
 
       if (S.rain) {
         this.drops = [];
-        for (let i = 0; i < 110; i++) this.drops.push(this.add.image(Math.random() * W, Math.random() * H, 'rain').setScrollFactor(0).setDepth(720).setScale(2).setRotation(0.25));
+        for (let i = 0; i < 160; i++) this.drops.push(this.add.image(Math.random() * W, Math.random() * H, 'rain').setScrollFactor(0).setDepth(720).setScale(0.5, 0.4 + Math.random() * 0.4).setAlpha(0.35 + Math.random() * 0.5).setRotation(0.22));
       }
 
       this.events = S.events.map((e) => Object.assign({}, e));
@@ -347,10 +375,10 @@
     // ---- HUD ------------------------------------------------------------------------------------------
     buildHud() {
       const D = 900, fix = (o) => o.setScrollFactor(0).setDepth(D);
-      fix(this.add.image(20, 20, 'pt-aren'));
+      fix(this.add.image(20, 20, 'pt-aren').setScale(0.3));
       this.hud = fix(this.add.graphics());
-      fix(txt(this, 40, 27, 'ECO', 4, '#c8a8ff', { ox: 0, thick: 1 }));
-      this.objective = fix(txt(this, W / 2, 10, 'OBJETIVO: ' + this.meta.objective, 5, '#e8d8b8', { wrap: 270, thick: 2, ls: 2 }));
+      fix(txt(this, 39, 20.5, 'ECO', 4, '#c8a8ff', { ox: 0, bold: true }));
+      this.objective = fix(txt(this, 288, 13, 'OBJETIVO: ' + this.meta.objective, 4.6, '#e8d8b8', { wrap: 180, ls: 2 }));
       this.stats = fix(txt(this, W - 26, 10, '', 5, '#f4e6c8', { ox: 1, thick: 2 }));
       const pause = fix(txt(this, W - 12, 11, 'II', 8, '#f4e6c8', { thick: 3 }));
       pause.setInteractive({ useHandCursor: true }).on('pointerup', () => this.togglePause());
@@ -359,7 +387,7 @@
       this.advance = fix(txt(this, W - 26, 140, 'AVANCE\n>>', 7, AMBER, { thick: 3 })).setVisible(false);
       this.tweens.add({ targets: this.advance, x: W - 18, duration: 400, yoyo: true, repeat: -1 });
       if (this.S.boss) {
-        this.bossName = fix(txt(this, W / 2, 34, 'VIGIA DE BRONZE', 6, '#f2c474', { thick: 2 })).setVisible(false);
+        this.bossName = fix(txt(this, W / 2, 36, 'VIGIA DE BRONZE', 10, '#f2c474', { display: true })).setVisible(false);
       }
       this.worldG = this.add.graphics().setDepth(800);
     }
@@ -367,16 +395,17 @@
     drawHud() {
       const g = this.hud, h = this.hero; g.clear();
       const bar = (x, y, w, hh, pct, col, back) => {
-        g.fillStyle(0x08060c); g.fillRect(x - 1, y - 1, w + 2, hh + 2);
+        g.fillStyle(0x000000, 0.7); g.fillRect(x - 1, y - 1, w + 2, hh + 2);
         g.fillStyle(back || 0x2a2030); g.fillRect(x, y, w, hh);
         g.fillStyle(col); g.fillRect(x, y, Math.round(w * Phaser.Math.Clamp(pct, 0, 1)), hh);
       };
-      bar(38, 9, 110, 7, h.hp / h.maxHp, h.hp / h.maxHp > 0.3 ? 0xe0aa5c : 0xd42a2a);
-      bar(52, 20, 96, 4, h.eco / 100, h.eco >= 30 ? 0xb07aff : 0x6a4aa0);
-      g.fillStyle(0xf4e6c8, 0.5); g.fillRect(52 + 96 * 0.3, 19, 1, 6); g.fillRect(52 + 96 * 0.5, 19, 1, 6);
+      bar(38, 9, 120, 5, h.hp / h.maxHp, h.hp / h.maxHp > 0.3 ? 0xe8b465 : 0xd42a2a);
+      g.fillStyle(0xffffff, 0.25); g.fillRect(38, 9, Math.round(120 * h.hp / h.maxHp), 1.5);
+      bar(54, 19, 104, 3, h.eco / 100, h.eco >= 30 ? 0xb07aff : 0x6a4aa0);
+      g.fillStyle(0xf4e6c8, 0.6); g.fillRect(54 + 104 * 0.3, 18, 0.6, 5); g.fillRect(54 + 104 * 0.5, 18, 0.6, 5);
       if (this.boss && this.bossActive) {
         const b = this.boss;
-        bar(W / 2 - 110, 42, 220, 6, b.hp / b.maxHp, b.armor > 0 ? 0xffe08a : b.vulnerable > 0 ? 0xff6a4a : 0xc0763a);
+        bar(W / 2 - 110, 44, 220, 4, b.hp / b.maxHp, b.armor > 0 ? 0xffe08a : b.vulnerable > 0 ? 0xff6a4a : 0xc0763a);
         g.fillStyle(0xf4e6c8); g.fillRect(W / 2 - 110 + 220 * 0.5, 41, 1, 8); g.fillRect(W / 2 - 110 + 220 * 0.2, 41, 1, 8);
       }
       const save = LIM.Save.data;
@@ -384,7 +413,7 @@
       const wg = this.worldG; wg.clear();
       this.enemies.forEach((e) => {
         if (e.boss || e.dead || e.hp >= e.maxHp) return;
-        const x = e.x - 14, y = e.y - e.z - 74;
+        const x = e.x - 14, y = e.y - e.z - 104 * e.size;
         wg.fillStyle(0x08060c); wg.fillRect(x - 1, y - 1, 30, 4);
         wg.fillStyle(0xd42a2a); wg.fillRect(x, y, Math.round(28 * e.hp / e.maxHp), 2);
         if (e.type === 'guarda' && e.guardBroken > 0) { wg.fillStyle(0xffd23c); wg.fillRect(x, y + 3, 28, 1); }
@@ -469,7 +498,7 @@
     onDeath(a) {
       if (a === this.hero) { this.gameOver(); return; }
       a.dead = true; a.set('dead'); a.releaseToken();
-      this.tweens.add({ targets: [a.sprite, a.shadow], alpha: 0, duration: 600, onComplete: () => { a.sprite.setVisible(false); a.shadow.setVisible(false); } });
+      this.tweens.add({ targets: a, fade: 0, duration: 700, onComplete: () => { a.rig.setVisible(false); a.shadow.setVisible(false); a.gone = true; } });
     }
 
     ecoBurst(h) {
@@ -483,13 +512,20 @@
     }
 
     spark(x, y, s, tint) {
-      const img = this.add.image(x, y, 'spark').setDepth(850).setScale(s).setTint(tint || 0xffffff).setRotation(Math.random());
-      this.tweens.add({ targets: img, scale: s * 2.4, alpha: 0, duration: 190, onComplete: () => img.destroy() });
+      const ADD = Phaser.BlendModes.ADD;
+      const gl = this.add.image(x, y, 'glow').setDepth(849).setScale(0.25 * s).setTint(tint || 0xffffff).setBlendMode(ADD);
+      this.tweens.add({ targets: gl, scale: 0.55 * s, alpha: 0, duration: 260, onComplete: () => gl.destroy() });
+      const img = this.add.image(x, y, 'spark').setDepth(850).setScale(0.25 * s).setTint(tint || 0xffffff).setRotation(Math.random()).setBlendMode(ADD);
+      this.tweens.add({ targets: img, scale: 0.6 * s, alpha: 0, duration: 200, onComplete: () => img.destroy() });
+      for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2, st = this.add.image(x, y, 'streak').setDepth(851).setScale(0.18 * s, 0.4).setRotation(a).setTint(tint || 0xffffff).setBlendMode(ADD).setOrigin(1, 0.5);
+        this.tweens.add({ targets: st, x: x + Math.cos(a) * 26 * s, y: y + Math.sin(a) * 26 * s, alpha: 0, duration: 220, onComplete: () => st.destroy() });
+      }
     }
     dust(x, y, n) {
       for (let i = 0; i < n; i++) {
-        const d = this.add.image(x + Phaser.Math.Between(-18, 18), y - 2, 'dot').setDepth(y + 11).setAlpha(0.6).setTint(0x8a7a8a);
-        this.tweens.add({ targets: d, x: d.x + Phaser.Math.Between(-22, 22), y: y - Phaser.Math.Between(6, 20), alpha: 0, scale: 2.4, duration: 420, onComplete: () => d.destroy() });
+        const d = this.add.image(x + Phaser.Math.Between(-18, 18), y - 2, 'puff').setDepth(y + 11).setAlpha(0.7).setScale(0.12);
+        this.tweens.add({ targets: d, x: d.x + Phaser.Math.Between(-26, 26), y: y - Phaser.Math.Between(6, 22), alpha: 0, scale: 0.4, duration: 600, onComplete: () => d.destroy() });
       }
     }
 
@@ -507,7 +543,7 @@
           if (c.hp <= 0) {
             this.dust(c.x, c.y, 6); c.s.destroy();
             if (Math.random() < 0.6) {
-              const orb = this.add.image(c.x, c.y - 10, 'dot').setScale(1.6).setTint(0xe0aa5c).setDepth(10 + c.y);
+              const orb = this.add.image(c.x, c.y - 10, 'glow').setScale(0.14).setTint(0xffc060).setBlendMode(Phaser.BlendModes.ADD).setDepth(10 + c.y);
               this.tweens.add({ targets: orb, y: c.y - 16, duration: 500, yoyo: true, repeat: -1 });
               (this.orbs = this.orbs || []).push({ s: orb, x: c.x, y: c.y });
             }
@@ -533,14 +569,14 @@
       };
       if (ev.lampsOut) {
         LIM.SFX.lampsOut();
-        this.lamps.forEach((l) => { l.l.setTexture('lamp-off'); l.gl.setVisible(false); });
+        this.lamps.forEach((l) => { l.l.setTexture('lamp-off'); [l.gl, l.cone, l.pool].forEach((o) => o.setVisible(false)); });
         this.tweens.add({ targets: this.darkness, fillAlpha: 0.35, duration: 600 });
       }
       if (ev.lock) {
         this.lock = ev.lock; this.lockEv = ev;
         if (ev.doors) {
           ev.lock.forEach((x, i) => {
-            const d = this.add.image(x + (i ? -6 : 6), 80, 'door').setOrigin(0.5, 1).setScale(2).setDepth(400);
+            const d = this.add.image(x + (i ? -6 : 6), 80, 'door').setOrigin(0.5, 1).setScale(0.5).setDepth(400);
             this.tweens.add({ targets: d, y: 254, duration: 380, ease: 'Bounce.out' });
             this.doors.push(d);
           });
@@ -555,8 +591,8 @@
       ev.wave.forEach((w, i) => {
         const e = new LIM.Actor(this, w.t, w.x, w.y, w.x > this.hero.x ? -1 : 1);
         e.ai.cool = 0.5 + i * 0.6;
-        e.sprite.setAlpha(0);
-        this.tweens.add({ targets: e.sprite, alpha: 1, duration: 400 });
+        e.fade = 0;
+        this.tweens.add({ targets: e, fade: 1, duration: 450 });
         this.enemies.push(e);
       });
     }
@@ -570,12 +606,12 @@
       this.doors = [];
       if (ev.lampsOut) {
         this.tweens.add({ targets: this.darkness, fillAlpha: 0, duration: 1200 });
-        this.lamps.forEach((l) => { l.l.setTexture('lamp-on'); l.gl.setVisible(true); });
+        this.lamps.forEach((l) => { l.l.setTexture('lamp-on'); [l.gl, l.cone, l.pool].forEach((o) => o.setVisible(true)); });
       }
       if (ev.clear) {
         if (ev.clear.flag) this.flags = Object.assign(this.flags || {}, { [ev.clear.flag]: true });
         if (ev.clear.talk) {
-          if (this.npc) { this.npc.setFrame('idle0'); this.npc.setFlipX(this.hero.x < this.npc.x); }
+          if (this.npc) { this.npc.setPose('idle'); this.npcPos.f = this.hero.x < this.npcPos.x ? -1 : 1; }
           this.dlg.open(ev.clear.talk, () => this.showAdvance());
           return;
         }
@@ -616,8 +652,8 @@
       this.chosen = c;
       const save = LIM.Save.data;
       save.choices.boss_bronze = c;
-      if (c === 'vincular') { this.hero.eco -= 50; this.boss.sprite.setTint(0xb07aff); this.ecoBurst(this.boss); }
-      else { this.runSteel = (this.runSteel || 0) + 200; this.tweens.add({ targets: this.boss.sprite, alpha: 0, duration: 900 }); this.dust(this.boss.x, this.boss.y, 14); }
+      if (c === 'vincular') { this.hero.eco -= 50; this.boss.rig.aura = 0xb07aff; this.ecoBurst(this.boss); }
+      else { this.runSteel = (this.runSteel || 0) + 200; this.tweens.add({ targets: this.boss, fade: 0, duration: 1200 }); this.dust(this.boss.x, this.boss.y, 14); }
       this.choiceUI.items.forEach((i) => i.destroy()); this.choiceUI.b.forEach((b) => b.destroy());
       const line = c === 'vincular' ? [['vigia', 'Então você lembra. Vou guardar o portão aberto para quem vier depois.']] : [['aren', 'Descanse. Eu carrego o que você guardava.']];
       this.dlg.open(line, () => this.stageClear());
@@ -698,10 +734,10 @@
       if (this.drops) this.drops.forEach((d) => { d.x -= 90 * dt; d.y += 380 * dt; if (d.y > H) { d.y = -8; d.x = Math.random() * (W + 60); } });
       if (!this.over && !this.dlg.active && I.consume('start')) this.togglePause();
       if (this.paused) return;
-      if (this.dlg.active) { this.dlg.update(dt); this.renderAll(); return; }
+      if (this.dlg.active) { this.dlg.update(dt); this.renderAll(dt); return; }
       if (this.over) {
         if (this.endKey && I.anyAction()) { const f = this.endKey; this.endKey = null; f(); }
-        this.renderAll();
+        this.renderAll(dt);
         return;
       }
       if (!LIM.Input.touchVisible && LIM.Input._wantTouch === false) LIM.Input.showTouch(true);
@@ -746,7 +782,7 @@
       if (this.lock) target = Phaser.Math.Clamp(target, this.lock[0], this.lock[1] - W);
       target = Phaser.Math.Clamp(target, 0, this.S.width - W);
       cam.scrollX += (target - cam.scrollX) * Math.min(1, dt * 6);
-      this.renderAll();
+      this.renderAll(dt);
     }
 
     separate() {
@@ -763,10 +799,13 @@
       }
     }
 
-    renderAll() {
-      this.bg.update(this.cameras.main.scrollX);
-      this.hero.render();
-      this.enemies.forEach((e) => { if (!e.dead || e.sprite.visible) e.render(); });
+    renderAll(dt) {
+      dt = dt || 1 / 60;
+      this.bg.update(this.cameras.main.scrollX, dt);
+      this.hero.render(dt);
+      this.enemies.forEach((e) => { if (!e.gone) e.render(dt); });
+      if (this.npc) { this.npc.step(dt, 1); this.npc.render(this.npcPos.x, this.npcPos.y, this.npcPos.f, 0, dt, 10 + this.npcPos.y); }
+      if (this.S.theme === 'gate' || this.S.theme === 'street') embers(this, dt * 0.5);
       this.drawHud();
     }
   }
@@ -777,7 +816,7 @@
     create() {
       this._leaving = false; this.ready = false;
       LIM.Input.showTouch(false); LIM.Input.clear();
-      this.cameras.main.fadeIn(800);
+      cam(this).fadeIn(800);
       const act = LIM.DATA.acts[0];
       this.add.rectangle(0, 0, W, H, 0x050308).setOrigin(0);
       this.add.image(0, 0, 'bg-gate-sky').setOrigin(0).setScale(2).setAlpha(0.35);
@@ -801,12 +840,12 @@
 
   function start() {
     LIM.game = new Phaser.Game({
-      type: Phaser.AUTO, parent: 'game', width: W, height: H, backgroundColor: '#000000',
-      pixelArt: true, roundPixels: true, input: { activePointers: 4 },
+      type: Phaser.AUTO, parent: 'game', width: 1280, height: 720, backgroundColor: '#000000',
+      antialias: true, pixelArt: false, roundPixels: false, input: { activePointers: 4 },
       scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, fullscreenTarget: 'game' },
       scene: [Boot, Title, Intro, MapScene, Stage, ActEnd, LIM.ControlsScene]
     });
   }
-  const fontReady = document.fonts && document.fonts.load ? document.fonts.load('16px "Press Start 2P"') : Promise.resolve();
+  const fontReady = document.fonts && document.fonts.load ? Promise.all(['700 16px Cinzel', '400 16px Inter', '700 16px Inter'].map((f) => document.fonts.load(f))) : Promise.resolve();
   Promise.race([fontReady, new Promise((r) => setTimeout(r, 1500))]).then(start, start);
 })(window);

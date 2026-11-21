@@ -53,7 +53,11 @@
     constructor() { super({ key: 'Controls', active: false }); }
 
     create() {
-      const W = this.scale.width, H = this.scale.height;
+      const Z = global.LIM.ZOOM || 1;
+      this.cameras.main.setZoom(Z).setOrigin(0, 0);
+      this.Z = Z;
+      const W = this.scale.width / Z, H = this.scale.height / Z;
+      this.W = W;
       this.input.addPointer(3);
       this.touchHeld = { left: false, right: false, up: false, down: false, punch: false, kick: false, block: false, special: false };
       this.padPointer = null;
@@ -62,8 +66,8 @@
       this.root = this.add.container(0, 0).setDepth(1000);
       // joystick
       this.padX = 62; this.padY = H - 62; this.padR = 40;
-      this.padBase = this.add.circle(this.padX, this.padY, this.padR, 0xffffff, 0.12).setStrokeStyle(2, 0xffffff, 0.35);
-      this.padKnob = this.add.circle(this.padX, this.padY, 17, 0xffffff, 0.35).setStrokeStyle(2, 0xffffff, 0.6);
+      this.padBase = this.add.circle(this.padX, this.padY, this.padR, 0x08060c, 0.35).setStrokeStyle(1, 0xe0aa5c, 0.5);
+      this.padKnob = this.add.circle(this.padX, this.padY, 15, 0xe0aa5c, 0.3).setStrokeStyle(1, 0xffe2b0, 0.7);
       this.root.add([this.padBase, this.padKnob]);
 
       // action buttons (right side, arc layout)
@@ -76,8 +80,8 @@
         { a: 'special', label: 'ECO', x: cx, y: cy - o, color: 0x9a6ae0 }
       ];
       this.buttons = defs.map((d) => {
-        const c = this.add.circle(d.x, d.y, 19, d.color, 0.3).setStrokeStyle(2, 0xffffff, 0.6);
-        const t = this.add.text(d.x, d.y, d.label, { fontFamily: '"Press Start 2P"', fontSize: '5px', color: '#ffffff' })
+        const c = this.add.circle(d.x, d.y, 18, 0x08060c, 0.4).setStrokeStyle(1.2, d.color, 0.9);
+        const t = this.add.text(d.x, d.y, d.label, { fontFamily: 'Inter, sans-serif', fontStyle: '700', fontSize: '6.5px', color: '#f4e6c8', resolution: 3 })
           .setOrigin(0.5).setAlpha(0.9);
         this.root.add([c, t]);
         return Object.assign({ circle: c, text: t, r: 21 }, d);
@@ -92,16 +96,17 @@
 
     onDown(p) {
       if (!this.root.visible) return;
-      if (p.x < this.scale.width * 0.42) {
+      const px = p.x / this.Z, py = p.y / this.Z;
+      if (px < this.W * 0.42) {
         if (this.padPointer === null) { this.padPointer = p.id; this.onMove(p); }
         return;
       }
       for (const b of this.buttons) {
-        if (Phaser.Math.Distance.Between(p.x, p.y, b.x, b.y) <= b.r) {
+        if (Phaser.Math.Distance.Between(px, py, b.x, b.y) <= b.r) {
           this.btnPointers[p.id] = b.a;
           this.touchHeld[b.a] = true;
           Input.press(b.a);
-          b.circle.setFillStyle(b.color, 0.7);
+          b.circle.setFillStyle(b.color, 0.55);
           if (navigator.vibrate) navigator.vibrate(12);
           return;
         }
@@ -110,7 +115,7 @@
 
     onMove(p) {
       if (p.id !== this.padPointer) return;
-      let dx = p.x - this.padX, dy = p.y - this.padY;
+      let dx = p.x / this.Z - this.padX, dy = p.y / this.Z - this.padY;
       const len = Math.hypot(dx, dy);
       const max = this.padR;
       if (len > max) { dx = dx / len * max; dy = dy / len * max; }
@@ -135,7 +140,7 @@
         delete this.btnPointers[p.id];
         this.touchHeld[a] = false;
         const b = this.buttons.find((x) => x.a === a);
-        b.circle.setFillStyle(b.color, 0.3);
+        b.circle.setFillStyle(0x08060c, 0.4);
       }
     }
 

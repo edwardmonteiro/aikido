@@ -27,7 +27,7 @@
     claw:   { kind: 'P', f: ['punch0', 'punch1', 'punch0'], st: 0.06, ac: 0.07, rc: 0.16, dmg: 5, reach: [2, 32], stun: 0.25, push: 40 },
     bash:   { kind: 'P', f: ['block', 'punch1', 'block'], st: 0.05, ac: 0.24, rc: 0.3, dmg: 8, reach: [0, 30], stun: 0.4, push: 110, lunge: 260 },
     thrust: { kind: 'P', f: ['punch0', 'punch1', 'punch1'], st: 0.04, ac: 0.1, rc: 0.35, dmg: 9, reach: [4, 50], stun: 0.35, push: 70, lunge: 160 },
-    hammer: { kind: 'H', f: ['tele', 'slam', 'slam'], st: 0.02, ac: 0.08, rc: 0.95, dmg: 18, areaAt: 52, areaR: 34, stun: 0.6, push: 90, knock: true, heavy: true },
+    hammer: { kind: 'H', f: ['tele', 'slam', 'slam'], st: 0.02, ac: 0.08, rc: 0.95, dmg: 15, areaAt: 52, areaR: 34, stun: 0.6, push: 90, knock: true, heavy: true },
     sweep:  { kind: 'P', f: ['punch0', 'sweep', 'sweep'], st: 0.05, ac: 0.1, rc: 0.55, dmg: 10, reach: [0, 70], stun: 0.45, push: 140 }
   };
 
@@ -36,7 +36,7 @@
     errante:  { hp: 30, speed: 58, team: 'foe', tele: 0.36, moves: ['claw', 'claw'], engage: 26, steel: 10 },
     guarda:   { hp: 46, speed: 46, team: 'foe', tele: 0.5, moves: ['bash'], engage: 58, steel: 20 },
     duelista: { hp: 44, speed: 72, team: 'foe', tele: 0.45, moves: ['thrust'], engage: 48, steel: 25 },
-    vigia:    { hp: 240, speed: 34, team: 'foe', boss: true, steel: 0 },
+    vigia:    { hp: 210, speed: 34, team: 'foe', boss: true, steel: 0 },
     courier:  { hp: 1, speed: 0, team: 'npc' }
   };
 
@@ -57,18 +57,17 @@
       this.eco = 0;
       this.invuln = 0;
       this.dead = false;
-      const fh = LIM.FRAME_H[type];
-      this.fh = fh;
-      this.shadow = scene.add.image(x, y, 'shadow').setScale(2 * LIM.CAST[type].size).setDepth(3);
-      this.sprite = scene.add.sprite(x, y, 'c-' + type, 'idle0').setScale(2).setOrigin(0.5, fh.FOOT / fh.FH);
-      this.play('idle');
-      if (LIM.CAST[type].scarf) this.initScarf();
+      this.size = LIM.RIG_CAST[type].size;
+      this.shadow = scene.add.image(x, y, 'shadow').setScale(0.42 * this.size, 0.5 * this.size).setDepth(3);
+      this.rig = new LIM.Rig(scene, type);
+      this.sprite = this.rig.g; // alvo de tweens (alpha/visibilidade)
+      this.rot = 0; this.fade = 1; this.lastX = x;
     }
 
     // ---- utilidades ----------------------------------------------------------------
-    play(a) { if (this.cur === a) return; this.cur = a; this.sprite.play(this.type + '-' + a); }
-    frame(f) { this.cur = null; this.sprite.anims.stop(); this.sprite.setFrame(f); }
-    set(s) { this.state = s; this.t = 0; if (s !== 'tele' && !(this.armor > 0)) this.sprite.clearTint(); }
+    play(a) { this.rig.setPose(a); }
+    frame(f) { this.rig.setPose(f === 'idle0' ? 'idle' : f); }
+    set(s) { this.state = s; this.t = 0; if (s !== 'tele') this.rig.tele = false; }
     alive() { return !this.dead && this.hp > 0; }
     foes() { return this.team === 'hero' ? this.scene.enemies.filter((e) => e.alive() || e.state === 'knock') : [this.scene.hero]; }
     inFront(o) { return (o.x - this.x) * this.facing > -4; }
@@ -142,6 +141,7 @@
     }
 
     takeHit(att, m, dmg) {
+      this.rig.flash = 1;
       this.hp = Math.max(0, this.hp - dmg);
       if (this.type === 'guarda' && (m.kind === 'K' || m.guardBreak)) this.guardBroken = 1.4;
       if (this.boss) {
@@ -161,51 +161,14 @@
 
     stagger(dur) { this.set('stagger'); this.stun = dur; this.vx = -this.facing * 60; }
 
-    // ---- cachecol vermelho (corrente de Verlet) --------------------------------------------
-    initScarf() {
-      this.scarf = [];
-      for (let i = 0; i < 9; i++) this.scarf.push({ x: this.x, y: this.y - 50, px: this.x, py: this.y - 50 });
-      this.scarfG = this.scene.add.graphics();
-    }
-    updateScarf(dt) {
-      const f = this.sprite.frame.name, n = LIM.NECK[this.type][f] || [0, -40];
-      const flip = this.facing < 0 ? -1 : 1;
-      let ax, ay;
-      if (this.sprite.rotation) { ax = this.sprite.x; ay = this.sprite.y - 10; }
-      else { ax = this.x + n[0] * 2 * flip; ay = this.y - this.z + n[1] * 2 + 2; }
-      const wind = -this.facing * 70 + (this.scene.wind || 0) - this.vx * 0.2 + Math.sin(this.scene.now * 7) * 30;
-      const pts = this.scarf;
-      pts[0].x = ax; pts[0].y = ay;
-      for (let i = 1; i < pts.length; i++) {
-        const p = pts[i], vx = (p.x - p.px) * 0.9, vy = (p.y - p.py) * 0.9;
-        p.px = p.x; p.py = p.y;
-        p.x += vx + wind * dt * dt * 90; p.y += vy + 40 * dt * dt * 60 * (0.6 + 0.4 * Math.sin(this.scene.now * 9 + i));
-      }
-      for (let k = 0; k < 3; k++) for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1], b = pts[i], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, L = 5;
-        const diff = (d - L) / d; void L;
-        b.x -= dx * diff; b.y -= dy * diff;
-      }
-      const g = this.scarfG; g.clear();
-      g.setDepth(this.sprite.depth - 0.1);
-      for (let i = 1; i < pts.length; i++) {
-        const w = 5 - i * 0.4;
-        g.lineStyle(w + 2, 0x1a0608, 1); g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
-      }
-      for (let i = 1; i < pts.length; i++) {
-        const w = 5 - i * 0.4;
-        g.lineStyle(w, i % 2 ? 0xd42a2a : 0xb81e22, 1); g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
-      }
-    }
-
     // ---- atualização comum ----------------------------------------------------------------------
     physics(dt) {
       if (this.state === 'knock') {
         this.x += this.vx * dt; this.z += this.vz * dt; this.vz -= GRAVITY * dt;
         this.frame('hurt');
-        this.sprite.rotation = -this.facing * Math.min(1.3, this.t * 3.2);
+        this.rot = -Math.min(1.3, this.t * 3.2);
         if (this.z <= 0 && this.t > 0.05) {
-          this.z = 0; this.sprite.rotation = 0;
+          this.z = 0; this.rot = 0;
           this.set('down'); this.vx *= 0.3;
           this.scene.onLand(this);
         }
@@ -330,9 +293,8 @@
     }
 
     finish(dt) {
-      if (this.state !== 'knock') this.sprite.rotation = 0;
+      if (this.state !== 'knock') this.rot = 0;
       this.clamp();
-      if (this.scarf) this.updateScarf(dt);
     }
 
     // ---- inimigos (FSM: aproximar → sinalizar → atacar → recuperar → reposicionar) ------------
@@ -369,8 +331,8 @@
         case 'tele':
           this.faceTo(h);
           this.frame(this.type === 'errante' ? 'tele' : this.type === 'guarda' ? 'block' : 'punch0');
-          this.sprite.setTintFill(Math.floor(this.t * 16) % 2 ? 0xffffff : 0xffd890);
-          if (this.t >= A.tele) { this.sprite.clearTint(); this.attack(ai.combo.shift()); }
+          this.rig.tele = true;
+          if (this.t >= A.tele) { this.rig.tele = false; this.attack(ai.combo.shift()); }
           break;
         case 'attack':
           if (this.updateAttack(dt) && ai.combo && ai.combo.length) this.attack(ai.combo.shift());
@@ -389,7 +351,7 @@
         }
         default: break;
       }
-      if (this.state !== 'tele') this.sprite.clearTint();
+      if (this.state !== 'tele') this.rig.tele = false;
       return this.finish(dt);
     }
 
@@ -402,8 +364,8 @@
       const phase2 = this.hp <= this.maxHp * 0.5;
       if (this.armor > 0) {
         this.armor -= dt;
-        this.sprite.setTint(Math.floor(this.scene.now * 10) % 2 ? 0xffe08a : 0xffffff);
-        if (this.armor <= 0) { this.sprite.clearTint(); this.scene.toast('A armadura se desfaz'); }
+        this.rig.armor = true; this.rig.aura = 0xffd060;
+        if (this.armor <= 0) { this.rig.armor = false; this.rig.aura = null; this.scene.toast('A armadura se desfaz'); }
       }
       if (this.vulnerable > 0) { this.vulnerable -= dt; }
       if (phase2 && !this.phase2Started) {
@@ -419,7 +381,7 @@
         }
       }
       if (this.hp <= this.maxHp * 0.2 && this.state !== 'kneel') {
-        this.set('kneel'); this.armor = 0; this.sprite.clearTint(); this.clearMark();
+        this.set('kneel'); this.armor = 0; this.rig.armor = false; this.rig.aura = null; this.clearMark();
         this.scene.onSurrender(this);
       }
 
@@ -434,7 +396,7 @@
           const ey = h.y - this.y;
           if (Math.abs(ey) > 3) this.y += Math.sign(ey) * this.speed * 0.7 * dt;
           if (ai.cool <= 0 && h.alive() && h.state !== 'down' && adx < 110) {
-            ai.cool = phase2 ? 0.9 : 1.4;
+            ai.cool = phase2 ? 1.1 : 1.5;
             if (adx < 52 && Math.random() < 0.35) { this.set('tele'); ai.next = 'sweep'; LIM.SFX.telegraph(); }
             else { this.set('raise'); this.placeMark(); LIM.SFX.telegraph(); }
           }
@@ -446,8 +408,8 @@
           break;
         case 'tele':
           this.frame('punch0');
-          this.sprite.setTintFill(Math.floor(this.t * 16) % 2 ? 0xffffff : 0xffd890);
-          if (this.t >= 0.5) { this.sprite.clearTint(); this.attack(ai.next); }
+          this.rig.tele = true;
+          if (this.t >= 0.5) { this.rig.tele = false; this.attack(ai.next); }
           break;
         case 'attack':
           if (this.moveKey === 'hammer' && this.t >= this.move.st && !this.slammed) {
@@ -475,7 +437,8 @@
           break;
         default: break;
       }
-      if (this.state !== 'tele' && !(this.armor > 0)) this.sprite.clearTint();
+      if (this.state !== 'tele') this.rig.tele = false;
+      if (this.state === 'raise') this.rig.tele = Math.floor(this.t * 10) % 2 === 0;
       return this.finish(dt);
     }
 
@@ -490,22 +453,24 @@
     }
     clearMark() { if (this.ai.mark) { this.ai.mark.destroy(); this.ai.mark = null; } }
 
-    render() {
+    render(dt) {
+      dt = dt || 1 / 60;
+      const vx = (this.x - this.lastX) / dt; this.lastX = this.x;
+      this.rig.vx = vx;
+      const moving = this.state === 'walk' ? Math.min(1.6, Math.max(0.6, Math.abs(vx) / 70 + 0.4)) : 1;
+      this.rig.step(dt, moving);
+      let a = this.fade;
+      if (this.invuln > 0 && this.state === 'dodge') a *= 0.45 + 0.4 * (Math.floor(this.scene.now * 30) % 2);
+      this.rig.alpha = a;
       const fl = this.state === 'knock';
-      if (fl) { this.sprite.setOrigin(0.5, 0.6); this.sprite.setPosition(this.x, this.y - this.z - 24); }
-      else { this.sprite.setOrigin(0.5, this.fh.FOOT / this.fh.FH); this.sprite.setPosition(this.x, this.y - this.z); }
-      this.sprite.setFlipX(this.facing < 0);
-      this.sprite.setDepth(10 + this.y + (fl ? 1 : 0));
+      this.rig.render(this.x, this.y - this.z, this.facing, this.rot, dt, 10 + this.y + (fl ? 1 : 0));
       this.shadow.setPosition(this.x, this.y + 1);
-      const s = Math.max(0.5, 1 - this.z / 160) * 2 * LIM.CAST[this.type].size;
-      this.shadow.setScale(s, s);
-      if (this.invuln > 0 && this.state === 'dodge') this.sprite.setAlpha(0.55 + 0.45 * (Math.floor(this.scene.now * 30) % 2));
-      else this.sprite.setAlpha(1);
+      const s = Math.max(0.5, 1 - this.z / 160);
+      this.shadow.setScale(0.42 * this.size * s, 0.5 * this.size * s).setAlpha(this.fade);
     }
 
     destroy() {
-      this.sprite.destroy(); this.shadow.destroy();
-      if (this.scarfG) this.scarfG.destroy();
+      this.rig.destroy(); this.shadow.destroy();
       this.clearMark && this.clearMark();
     }
   }

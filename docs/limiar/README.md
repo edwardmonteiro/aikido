@@ -34,7 +34,7 @@ Combos: **P-P-K** knocks down · **K-K-P** breaks guard.
 | §7 choice at 20% HP | Vincular (−50 ECO, counts toward the true ending) / Dissipar (+200 aço), saved in `choices.boss_bronze` |
 | §8 combat | startup → active → recovery per move; damage only on overlap **at the same depth**; 60–90 ms hitstop; 120 ms buffer; ~0.2 s dodge i-frames; auto-face the nearest target; P 6 / K 10 / heavy 16; 100 HP |
 | §8 enemies | **Errante** (2 short hits) · **Guarda** (frontal shield blocks punches, breaks to kicks or attacks from behind) · **Duelista** (parries the 3rd repeated move) · FSM approach → telegraph → attack → recover → reposition, max 2 attackers at once |
-| §9 sprites | original silhouettes with rim light in the Act I colour, pivot at the feet, fixed scale per character; Aren's red scarf is a live Verlet chain |
+| §9 sprites | original smooth vector silhouettes drawn live from a skeleton, with poses that blend into each other, procedural walk and breathing, rim light in the Act I colour; Aren's coat and red scarf are Verlet cloth |
 | §11 save | `localStorage` (stages, flags, aço, ECO, memórias, choices, perks) |
 
 All data comes from `data/levels.json`, copied as delivered (`js/levels.js` holds the
@@ -48,14 +48,15 @@ instead, and the stage's reward ("Salto aprimorado") becomes "Esquiva aprimorada
 | Part | License |
 |---|---|
 | Phaser 3.90 engine (`vendor/`) | MIT |
-| Press Start 2P font (`vendor/`) | SIL OFL 1.1 |
+| Cinzel + Inter fonts (`vendor/`) | SIL OFL 1.1 |
 | Sprites, scenery, portraits, effects | generated in code (`js/art.js`), original |
 | Sound effects | WebAudio synth (`js/audio.js`) |
 | Code | same license as the repository |
 
 ```
 js/levels.js    GDD data (24 stages, acts, bosses, choices, endings)
-js/art.js       silhouettes, 3-layer parallax, portraits, effects
+js/rig.js       vector characters: skeleton, pose blending, cloth physics
+js/art.js       high-res scenery (sky, skyline, fog, wet ground), props, effects, portraits
 js/combat.js    Actor: frame data, hits, block/parry/dodge, enemy and boss AI
 js/stages.js    Act I script (events, waves, locks) + save
 js/scenes.js    Título, Abertura, Mapa, Fase, Fim de Ato, diálogos, escolha
