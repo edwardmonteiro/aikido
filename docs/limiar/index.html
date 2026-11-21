@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0818">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Limiar</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  @font-face { font-family: "Cinzel"; src: url("vendor/cinzel-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
+  @font-face { font-family: "Inter"; src: url("vendor/inter-400.woff2") format("woff2"); font-weight: 400; font-display: block; }
+  @font-face { font-family: "Inter"; src: url("vendor/inter-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
+  html, body {
+    margin: 0; height: 100%; background: #000; overflow: hidden;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  #game { position: fixed; inset: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  
+  #rotate {
+    display: none; position: fixed; inset: 0; z-index: 10; background: #0a0818; color: #e0aa5c;
+    font: 600 16px/1.8 Cinzel, Georgia, serif; letter-spacing: 2px; text-align: center; align-items: center; justify-content: center;
+    padding: 24px; box-sizing: border-box;
+  }
+  #rotate span { display: block; font-size: 40px; color: #fff; animation: turn 1.6s ease-in-out infinite; }
+  @keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(90deg); } }
+  @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="rotate"><div><span>&#x1F4F1;</span>GIRE O APARELHO<br>PARA JOGAR</div></div>
+<script src="vendor/phaser.min.js"></script>
+<script src="js/levels.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/controls.js"></script>
+<script src="js/rig.js"></script>
+<script src="js/art.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/stages.js"></script>
+<script src="js/scenes.js"></script>
+</body>
+</html>

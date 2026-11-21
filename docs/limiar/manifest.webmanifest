@@ -1,0 +1,12 @@
+{
+  "name": "Limiar — A Última Sombra",
+  "short_name": "Limiar",
+  "description": "Aventura de luta 2.5D em pixel art. Código aberto, offline.",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#08060c",
+  "theme_color": "#08060c",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
