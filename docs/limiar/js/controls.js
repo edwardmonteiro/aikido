@@ -1,4 +1,4 @@
-/* Ring Riot — unified input: keyboard + gamepad + on-screen touch controls.
+/* LIMIAR — unified input: keyboard + gamepad + on-screen touch controls.
  *
  * Every source writes into one shared state (RR.Input). Game code reads
  * `held.x` for continuous input and `consume('punch')` for one-shot presses,
@@ -7,7 +7,7 @@
 (function (global) {
   'use strict';
 
-  const ACTIONS = ['left', 'right', 'up', 'down', 'punch', 'grab', 'jump', 'start'];
+  const ACTIONS = ['left', 'right', 'up', 'down', 'punch', 'kick', 'block', 'special', 'start'];
   const Input = {
     held: {},
     _presses: {},
@@ -19,7 +19,7 @@
     },
     clear() { ACTIONS.forEach((a) => { this._presses[a] = 0; }); },
     press(a) { this._presses[a] = 1; },
-    anyAction() { return this.consume('punch') || this.consume('grab') || this.consume('jump') || this.consume('start'); },
+    anyAction() { const r = ['punch', 'kick', 'block', 'special', 'start'].map((a) => this.consume(a)); return r.some(Boolean); },
     showTouch(v) { this._wantTouch = v; }
   };
   ACTIONS.forEach((a) => { Input.held[a] = false; Input._presses[a] = 0; });
@@ -30,8 +30,9 @@
     ArrowUp: 'up', KeyW: 'up',
     ArrowDown: 'down', KeyS: 'down',
     KeyJ: 'punch', KeyZ: 'punch',
-    KeyK: 'grab', KeyX: 'grab',
-    KeyL: 'jump', KeyC: 'jump', Space: 'jump',
+    KeyK: 'kick', KeyX: 'kick',
+    KeyL: 'block', KeyC: 'block', ShiftLeft: 'block', ShiftRight: 'block',
+    KeyI: 'special', KeyV: 'special', Space: 'special',
     Enter: 'start', Escape: 'start'
   };
   const keyHeld = {};
@@ -54,7 +55,7 @@
     create() {
       const W = this.scale.width, H = this.scale.height;
       this.input.addPointer(3);
-      this.touchHeld = { left: false, right: false, up: false, down: false, punch: false, grab: false, jump: false };
+      this.touchHeld = { left: false, right: false, up: false, down: false, punch: false, kick: false, block: false, special: false };
       this.padPointer = null;
       this.btnPointers = {};
 
@@ -66,17 +67,20 @@
       this.root.add([this.padBase, this.padKnob]);
 
       // action buttons (right side, arc layout)
+      // losango: SOCO à esquerda, CHUTE à direita, DEFESA embaixo, ESPECIAL em cima
+      const cx = W - 66, cy = H - 66, o = 34;
       const defs = [
-        { a: 'punch', label: 'HIT', x: W - 104, y: H - 40, color: 0xff4a5a },
-        { a: 'grab', label: 'GRAB', x: W - 46, y: H - 66, color: 0x3ac8ff },
-        { a: 'jump', label: 'JUMP', x: W - 78, y: H - 112, color: 0xffd23c }
+        { a: 'punch', label: 'SOCO', x: cx - o, y: cy, color: 0xe0aa5c },
+        { a: 'kick', label: 'CHUTE', x: cx + o, y: cy, color: 0xd42a2a },
+        { a: 'block', label: 'DEFESA', x: cx, y: cy + o, color: 0x6a8ac8 },
+        { a: 'special', label: 'ECO', x: cx, y: cy - o, color: 0x9a6ae0 }
       ];
       this.buttons = defs.map((d) => {
-        const c = this.add.circle(d.x, d.y, 24, d.color, 0.35).setStrokeStyle(2, 0xffffff, 0.6);
-        const t = this.add.text(d.x, d.y, d.label, { fontFamily: '"Press Start 2P"', fontSize: '7px', color: '#ffffff' })
+        const c = this.add.circle(d.x, d.y, 19, d.color, 0.3).setStrokeStyle(2, 0xffffff, 0.6);
+        const t = this.add.text(d.x, d.y, d.label, { fontFamily: '"Press Start 2P"', fontSize: '5px', color: '#ffffff' })
           .setOrigin(0.5).setAlpha(0.9);
         this.root.add([c, t]);
-        return Object.assign({ circle: c, text: t, r: 28 }, d);
+        return Object.assign({ circle: c, text: t, r: 21 }, d);
       });
       this.root.setVisible(false);
 
@@ -97,7 +101,7 @@
           this.btnPointers[p.id] = b.a;
           this.touchHeld[b.a] = true;
           Input.press(b.a);
-          b.circle.setFillStyle(b.color, 0.75);
+          b.circle.setFillStyle(b.color, 0.7);
           if (navigator.vibrate) navigator.vibrate(12);
           return;
         }
@@ -131,7 +135,7 @@
         delete this.btnPointers[p.id];
         this.touchHeld[a] = false;
         const b = this.buttons.find((x) => x.a === a);
-        b.circle.setFillStyle(b.color, 0.35);
+        b.circle.setFillStyle(b.color, 0.3);
       }
     }
 
@@ -145,13 +149,13 @@
 
       // gamepad (standard mapping)
       const gp = (navigator.getGamepads && navigator.getGamepads()[0]) || null;
-      const g = { left: false, right: false, up: false, down: false, punch: false, grab: false, jump: false, start: false };
+      const g = { left: false, right: false, up: false, down: false, punch: false, kick: false, block: false, special: false, start: false };
       if (gp) {
         const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
         const btn = (i) => !!(gp.buttons[i] && gp.buttons[i].pressed);
         g.left = ax < -0.4 || btn(14); g.right = ax > 0.4 || btn(15);
         g.up = ay < -0.4 || btn(12); g.down = ay > 0.4 || btn(13);
-        g.punch = btn(2); g.grab = btn(1); g.jump = btn(0); g.start = btn(9);
+        g.punch = btn(2); g.kick = btn(3); g.block = btn(1) || btn(4) || btn(5); g.special = btn(0); g.start = btn(9);
         this.prevGp = this.prevGp || {};
         Object.keys(g).forEach((a) => { if (g[a] && !this.prevGp[a]) Input.press(a); });
         this.prevGp = g;
@@ -162,6 +166,6 @@
     }
   }
 
-  global.RR = global.RR || {};
-  Object.assign(global.RR, { Input, ControlsScene, isTouch });
+  global.LIM = global.LIM || {};
+  Object.assign(global.LIM, { Input, ControlsScene, isTouch });
 })(window);

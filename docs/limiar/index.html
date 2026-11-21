@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Ring Riot</title>
+<title>Limiar</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
@@ -24,7 +24,7 @@
   #game { position: fixed; inset: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
   #rotate {
-    display: none; position: fixed; inset: 0; z-index: 10; background: #0a0818; color: #ffd23c;
+    display: none; position: fixed; inset: 0; z-index: 10; background: #0a0818; color: #e0aa5c;
     font: 12px/2 "Press Start 2P", monospace; text-align: center; align-items: center; justify-content: center;
     padding: 24px; box-sizing: border-box;
   }
@@ -35,12 +35,14 @@
 </head>
 <body>
 <div id="game"></div>
-<div id="rotate"><div><span>&#x1F4F1;</span>ROTATE YOUR<br>DEVICE TO PLAY</div></div>
+<div id="rotate"><div><span>&#x1F4F1;</span>GIRE O APARELHO<br>PARA JOGAR</div></div>
 <script src="vendor/phaser.min.js"></script>
-<script src="js/sprites.js"></script>
+<script src="js/levels.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/controls.js"></script>
-<script src="js/fighter.js"></script>
-<script src="js/game.js"></script>
+<script src="js/art.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/stages.js"></script>
+<script src="js/scenes.js"></script>
 </body>
 </html>
